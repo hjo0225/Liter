@@ -59,7 +59,7 @@ async function handleJoin() {
     <div class="w-full max-w-sm rounded-2xl p-8 shadow-sm" style="background: white; border: 1px solid #EBF0FC;">
       <div class="text-center mb-6">
         <div class="text-4xl mb-3">🎒</div>
-        <h1 class="font-black text-2xl mb-1" style="color: #081830;">학급 입장하기</h1>
+        <h1 class="font-black text-2xl mb-1" style="color: #081830;">학생 로그인</h1>
         <p class="text-sm" style="color: #5A7AB8;">선생님이 알려준 코드와 이름을 입력하세요</p>
       </div>
 
@@ -111,7 +111,7 @@ async function handleJoin() {
             cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
           }"
         >
-          {{ loading ? '확인 중...' : '입장하기 →' }}
+          {{ loading ? '확인 중...' : '로그인 →' }}
         </button>
       </form>
     </div>

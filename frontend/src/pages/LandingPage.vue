@@ -244,22 +244,6 @@
         <div class="text-5xl mb-6">🚀</div>
         <h2 class="text-3xl mb-4" style="color: #081830; font-weight: 800">지금 바로 시작해보세요</h2>
         <p class="text-lg mb-8" style="color: #2653AC">초등 4~6학년 학생의 문해력, 토도독과 함께 키워요.</p>
-        <div class="flex flex-wrap justify-center gap-4">
-          <button
-            @click="router.push('/teacher')"
-            class="px-8 py-4 rounded-xl text-white text-sm transition-all hover:opacity-90 active:scale-95"
-            style="background-color: #1B438A; font-weight: 700; box-shadow: 0 4px 20px rgba(27,67,138,0.3)"
-          >
-            교사로 시작하기 👩‍🏫
-          </button>
-          <button
-            @click="router.push('/student/join')"
-            class="px-8 py-4 rounded-xl text-sm transition-all hover:opacity-90 active:scale-95"
-            style="background-color: white; color: #1B438A; font-weight: 700; border: 2px solid #C0D0F6"
-          >
-            학생 로그인 🎒
-          </button>
-        </div>
       </div>
     </section>
 
