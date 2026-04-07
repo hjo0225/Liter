@@ -1,8 +1,11 @@
 import json
+import logging
 
 from openai import OpenAI
 
 from app.core.config import settings
+
+logger = logging.getLogger("uvicorn.error")
 
 _SYSTEM_PROMPT = """당신은 초등학생 문해력 토의 평가 전문가입니다.
 학생의 토의 발화와 객관식 결과를 분석해 3가지 영역별 점수를 산출하세요.
@@ -80,7 +83,8 @@ def analyze_discussion(
             last_error = e
             continue
 
-    # 실패 시 기본값 반환
+    # 3회 모두 실패 시 기본값 반환
+    logger.error("analyze_discussion failed after 3 attempts, returning defaults", exc_info=last_error)
     return {
         "score_reasoning": 5.0,
         "score_vocabulary": 5.0,

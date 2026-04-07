@@ -1,8 +1,9 @@
+import asyncio
 import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from supabase import create_client
 
@@ -43,10 +44,11 @@ def _sse_event(data: dict) -> str:
 def get_me(student_id: str = Depends(get_current_student)):
     service = _service_client()
     today = date.today().isoformat()
+    seven_days_ago = (date.today() - timedelta(days=6)).isoformat()
 
     student_res = (
         service.table("students")
-        .select("name, level, streak_count")
+        .select("name, level, streak_count, weak_areas, classroom_id")
         .eq("id", student_id)
         .single()
         .execute()
@@ -63,12 +65,73 @@ def get_me(student_id: str = Depends(get_current_student)):
         .execute()
     )
 
+    weekly_res = (
+        service.table("sessions")
+        .select("id", count="exact")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .gte("session_date", seven_days_ago)
+        .execute()
+    )
+
+    total_completed_res = (
+        service.table("sessions")
+        .select("id", count="exact")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .execute()
+    )
+
+    recent_scores_res = (
+        service.table("sessions")
+        .select("score_reasoning, score_vocabulary, score_context")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .order("ended_at", desc=True)
+        .limit(3)
+        .execute()
+    )
+
     s = student_res.data
+    classroom_name = None
+    if s.get("classroom_id"):
+        classroom_res = (
+            service.table("classrooms")
+            .select("name")
+            .eq("id", s["classroom_id"])
+            .maybe_single()
+            .execute()
+        )
+        if classroom_res.data:
+            classroom_name = classroom_res.data["name"]
+
+    recent_scores = recent_scores_res.data or []
+    recent_average_score = None
+    if recent_scores:
+        recent_average_score = round(
+            sum(
+                (
+                    (sess["score_reasoning"] or 0)
+                    + (sess["score_vocabulary"] or 0)
+                    + (sess["score_context"] or 0)
+                )
+                / 3
+                for sess in recent_scores
+            )
+            / len(recent_scores),
+            1,
+        )
+
     return StudentMeResponse(
         name=s["name"],
         level=s["level"],
         streak_count=s["streak_count"] or 0,
         today_session_count=count_res.count or 0,
+        classroom_name=classroom_name,
+        weak_areas=s.get("weak_areas") or [],
+        recent_average_score=recent_average_score,
+        weekly_completed_count=weekly_res.count or 0,
+        total_completed_count=total_completed_res.count or 0,
     )
 
 
@@ -327,16 +390,19 @@ def _maybe_diagnose(student_id: str, session_id: str, answered: list[dict], serv
             "weak_areas": result["weak_areas"],
         }).eq("id", student_id).execute()
     except RuntimeError:
-        pass
+        logger.warning(
+            "Diagnosis failed for student_id=%s session_id=%s", student_id, session_id, exc_info=True
+        )
 
 
 # ──────────────────────────────────────────────
 # POST /student/sessions/{session_id}/discussion  (SSE)
 # ──────────────────────────────────────────────
 @router.post("/sessions/{session_id}/discussion")
-def discussion(
+async def discussion(
     session_id: str,
     body: DiscussionRequest,
+    request: Request,
     student_id: str = Depends(get_current_student),
 ):
     service = _service_client()
@@ -414,7 +480,7 @@ def discussion(
             # 학생 발화가 있으면 다음 라운드
             current_round += 1
 
-    def generate():
+    async def generate():
         nonlocal existing_messages
         try:
             # 학생 발화 저장
@@ -438,32 +504,50 @@ def discussion(
                 yield _sse_event({"is_final": True})
                 return
 
+            if await request.is_disconnected():
+                logger.info("Client disconnected before LLM call, session_id=%s", session_id)
+                return
+
             ai_messages_to_save = []
 
             if current_round == 1:
                 # 첫 라운드: 모더레이터 → 또래A
-                mod_content = call_moderator(context, existing_messages, current_round)
+                mod_content = await asyncio.to_thread(call_moderator, context, existing_messages, current_round)
+                if await request.is_disconnected():
+                    logger.info("Client disconnected after moderator call, session_id=%s", session_id)
+                    return
                 yield _sse_event({"speaker": "moderator", "content": mod_content, "round": current_round})
                 ai_messages_to_save.append(("moderator", mod_content))
 
-                peer_a_content = call_peer_a(
+                peer_a_content = await asyncio.to_thread(
+                    call_peer_a,
                     context,
                     existing_messages + [{"speaker": "moderator", "content": mod_content, "round": current_round}],
                     current_round,
                 )
+                if await request.is_disconnected():
+                    logger.info("Client disconnected after peer_a call, session_id=%s", session_id)
+                    return
                 yield _sse_event({"speaker": "peer_a", "content": peer_a_content, "round": current_round})
                 ai_messages_to_save.append(("peer_a", peer_a_content))
             else:
                 # 이후 라운드: 또래B → 모더레이터
-                peer_b_content = call_peer_b(context, existing_messages, current_round)
+                peer_b_content = await asyncio.to_thread(call_peer_b, context, existing_messages, current_round)
+                if await request.is_disconnected():
+                    logger.info("Client disconnected after peer_b call, session_id=%s", session_id)
+                    return
                 yield _sse_event({"speaker": "peer_b", "content": peer_b_content, "round": current_round})
                 ai_messages_to_save.append(("peer_b", peer_b_content))
 
-                mod_content = call_moderator(
+                mod_content = await asyncio.to_thread(
+                    call_moderator,
                     context,
                     existing_messages + [{"speaker": "peer_b", "content": peer_b_content, "round": current_round}],
                     current_round,
                 )
+                if await request.is_disconnected():
+                    logger.info("Client disconnected after moderator call, session_id=%s", session_id)
+                    return
                 yield _sse_event({"speaker": "moderator", "content": mod_content, "round": current_round})
                 ai_messages_to_save.append(("moderator", mod_content))
 

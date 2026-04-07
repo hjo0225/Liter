@@ -12,10 +12,12 @@ from app.schemas.classroom import (
     ClassroomCreate,
     ClassroomCreateResponse,
     ClassroomItem,
+    DashboardSummary,
     DashboardResponse,
     LevelOverrideRequest,
     ScoreHistoryItem,
     StudentDashboardItem,
+    WeakAreaSummaryItem,
 )
 
 router = APIRouter(prefix="/teacher", tags=["teacher"])
@@ -88,6 +90,7 @@ def create_classroom(body: ClassroomCreate, current: TeacherProfile = Depends(ge
 @router.get("/classrooms/{classroom_id}/dashboard", response_model=DashboardResponse)
 def get_dashboard(classroom_id: str, current: TeacherProfile = Depends(get_current_teacher)):
     service = _service_client()
+    today = datetime.now().date().isoformat()
 
     # 소유권 확인
     classroom_res = (
@@ -110,23 +113,54 @@ def get_dashboard(classroom_id: str, current: TeacherProfile = Depends(get_curre
         .eq("classroom_id", classroom_id)
         .execute()
     )
+    student_ids = [student["id"] for student in students_res.data]
 
     four_weeks_ago = (datetime.now() - timedelta(weeks=4)).date().isoformat()
+    today_sessions_by_student: dict[str, list[dict]] = defaultdict(list)
+    completed_counts: dict[str, int] = defaultdict(int)
 
-    student_items: list[StudentDashboardItem] = []
-    for s in students_res.data:
-        # 세션 이력 조회 (최근 4주, completed)
-        sessions_res = (
+    if student_ids:
+        today_sessions_res = (
             service.table("sessions")
-            .select("session_date, score_reasoning, score_vocabulary, score_context")
-            .eq("student_id", s["id"])
+            .select("student_id, status")
+            .in_("student_id", student_ids)
+            .eq("session_date", today)
+            .neq("status", "abandoned")
+            .execute()
+        )
+        for session in today_sessions_res.data or []:
+            today_sessions_by_student[session["student_id"]].append(session)
+
+        completed_counts_res = (
+            service.table("sessions")
+            .select("student_id")
+            .in_("student_id", student_ids)
+            .eq("status", "completed")
+            .execute()
+        )
+        for session in completed_counts_res.data or []:
+            completed_counts[session["student_id"]] += 1
+
+    # 4주 세션 이력 전체 한 번에 조회 (N+1 방지)
+    score_sessions_by_student: dict[str, list[dict]] = defaultdict(list)
+    if student_ids:
+        score_sessions_res = (
+            service.table("sessions")
+            .select("student_id, session_date, score_reasoning, score_vocabulary, score_context")
+            .in_("student_id", student_ids)
             .eq("status", "completed")
             .gte("session_date", four_weeks_ago)
             .not_.is_("score_reasoning", "null")
             .order("session_date", desc=True)
             .execute()
         )
-        sessions = sessions_res.data or []
+        for sess in score_sessions_res.data or []:
+            score_sessions_by_student[sess["student_id"]].append(sess)
+
+    student_items: list[StudentDashboardItem] = []
+    weak_area_counts: dict[str, int] = defaultdict(int)
+    for s in students_res.data:
+        sessions = score_sessions_by_student.get(s["id"], [])
 
         # 최근 3세션 평균
         recent_sessions = sessions[:3]
@@ -163,21 +197,62 @@ def get_dashboard(classroom_id: str, current: TeacherProfile = Depends(get_curre
             for d, v in sorted(date_scores.items())
         ]
 
+        weak_areas = s.get("weak_areas") or []
+        for area in weak_areas:
+            weak_area_counts[area] += 1
+
+        today_sessions = today_sessions_by_student.get(s["id"], [])
+
         student_items.append(
             StudentDashboardItem(
                 id=s["id"],
                 name=s["name"],
                 level=s["level"],
                 teacher_override_level=s.get("teacher_override_level"),
-                weak_areas=s.get("weak_areas") or [],
+                weak_areas=weak_areas,
                 streak_count=s.get("streak_count") or 0,
                 recent_avg=recent_avg,
                 needs_attention=recent_avg is not None and recent_avg <= 5,
+                completed_sessions=completed_counts.get(s["id"], 0),
+                today_completed=any(session["status"] == "completed" for session in today_sessions),
                 score_history=score_history,
             )
         )
 
-    return DashboardResponse(classroom_name=classroom_name, students=student_items)
+    attention_count = sum(1 for student in student_items if student.needs_attention)
+    students_with_avg = [student for student in student_items if student.recent_avg is not None]
+    average_recent_score = round(
+        sum(student.recent_avg or 0 for student in students_with_avg) / len(students_with_avg),
+        1,
+    ) if students_with_avg else 0.0
+    average_streak = round(
+        sum(student.streak_count for student in student_items) / len(student_items),
+        1,
+    ) if student_items else 0.0
+    active_today = sum(1 for sessions in today_sessions_by_student.values() if sessions)
+    completed_today = sum(
+        1
+        for sessions in today_sessions_by_student.values()
+        if any(session["status"] == "completed" for session in sessions)
+    )
+    weak_area_summary = [
+        WeakAreaSummaryItem(area=area, count=count)
+        for area, count in sorted(weak_area_counts.items(), key=lambda item: (-item[1], item[0]))
+    ]
+
+    return DashboardResponse(
+        classroom_name=classroom_name,
+        summary=DashboardSummary(
+            total_students=len(student_items),
+            active_today=active_today,
+            completed_today=completed_today,
+            average_recent_score=average_recent_score,
+            average_streak=average_streak,
+            attention_count=attention_count,
+        ),
+        weak_area_summary=weak_area_summary,
+        students=student_items,
+    )
 
 
 @router.patch("/students/{student_id}/level")
