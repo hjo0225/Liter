@@ -28,7 +28,7 @@ def _looks_like_duplicate_error(exc: Exception) -> bool:
 @router.post("/signup", response_model=TeacherSignUpResponse, status_code=status.HTTP_201_CREATED)
 def teacher_signup(body: TeacherSignUpRequest):
     try:
-        auth_res = supabase.auth.sign_up(
+        auth_res = supabase_anon.auth.sign_up(
             {
                 "email": body.email,
                 "password": body.password,

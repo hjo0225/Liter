@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-vue-next'
 import apiClient from '@/api/client'
@@ -9,7 +9,7 @@ const router = useRouter()
 const teacherStore = useTeacherStore()
 
 // ── Tab ───────────────────────────────────────────────────────────────────────
-type Tab = 'login' | 'signup'
+type Tab = 'login' | 'signup' | 'verify'
 const tab = ref<Tab>('login')
 
 // ── Login ─────────────────────────────────────────────────────────────────────
@@ -21,12 +21,49 @@ const signupEmail = ref('')
 const signupPw = ref('')
 const signupName = ref('')
 
+// ── OTP ───────────────────────────────────────────────────────────────────────
+const verifyCode = ref(['', '', '', '', '', ''])
+const verifyRefs = ref<HTMLInputElement[]>([])
+const otpFilled = computed(() => verifyCode.value.every((c) => c !== ''))
+
 // ── UI ────────────────────────────────────────────────────────────────────────
 const showPw = ref(false)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const toast = ref<string | null>(null)
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+// ── Countdown timer ───────────────────────────────────────────────────────────
+const timerSeconds = ref(0)
+let timerInterval: ReturnType<typeof setInterval> | null = null
+
+const timerDisplay = computed(() => {
+  const m = Math.floor(timerSeconds.value / 60)
+  const s = timerSeconds.value % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
+})
+
+function startTimer(seconds = 585) {
+  timerSeconds.value = seconds
+  if (timerInterval) clearInterval(timerInterval)
+  timerInterval = setInterval(() => {
+    if (timerSeconds.value > 0) timerSeconds.value--
+    else clearInterval(timerInterval!)
+  }, 1000)
+}
+
+// ── Resend cooldown ───────────────────────────────────────────────────────────
+const resendCooldown = ref(0)
+let resendInterval: ReturnType<typeof setInterval> | null = null
+
+function startResendCooldown(seconds = 60) {
+  resendCooldown.value = seconds
+  if (resendInterval) clearInterval(resendInterval)
+  resendInterval = setInterval(() => {
+    if (resendCooldown.value > 0) resendCooldown.value--
+    else clearInterval(resendInterval!)
+  }, 1000)
+}
 
 function showToast(msg: string) {
   toast.value = msg
@@ -60,7 +97,11 @@ async function handleLogin() {
     router.push('/teacher/classrooms')
   } catch (e: any) {
     if (e.response?.status === 403 && e.response?.data?.detail === 'EMAIL_NOT_VERIFIED') {
-      error.value = '이메일 인증이 필요합니다. 메일함의 인증 링크를 먼저 눌러 주세요.'
+      signupEmail.value = email.value
+      verifyCode.value = ['', '', '', '', '', '']
+      error.value = null
+      tab.value = 'verify'
+      startTimer()
     } else {
       error.value = '이메일 또는 비밀번호가 올바르지 않습니다.'
     }
@@ -73,15 +114,19 @@ async function handleSignup() {
   error.value = null
   loading.value = true
   try {
-    await apiClient.post('/auth/teacher/signup', {
+    const { data } = await apiClient.post('/auth/teacher/signup', {
       email: signupEmail.value,
       password: signupPw.value,
       name: signupName.value,
     })
-    showToast('가입이 완료되었습니다. 이메일 인증 링크를 확인해 주세요.')
-    tab.value = 'login'
+    showToast(data.message ?? '인증번호를 발송했습니다. 이메일을 확인해 주세요.')
+    verifyCode.value = ['', '', '', '', '', '']
+    error.value = null
+    tab.value = 'verify'
+    startTimer()
+    startResendCooldown(60)
     email.value = signupEmail.value
-    password.value = ''
+    password.value = signupPw.value
   } catch (e: any) {
     const detail = e.response?.data?.detail
     if (e.response?.status === 409 || detail === 'EMAIL_ALREADY_EXISTS') {
@@ -99,6 +144,78 @@ async function handleSignup() {
     loading.value = false
   }
 }
+
+async function handleVerify() {
+  error.value = null
+  loading.value = true
+  try {
+    await apiClient.post('/auth/teacher/verify', {
+      email: signupEmail.value || email.value,
+      token: verifyCode.value.join(''),
+    })
+    showToast('인증이 완료되었습니다. 이제 로그인해 주세요.')
+    tab.value = 'login'
+    email.value = signupEmail.value || email.value
+    password.value = ''
+    verifyCode.value = ['', '', '', '', '', '']
+  } catch (e: any) {
+    error.value = '인증번호가 올바르지 않거나 만료되었습니다.'
+    verifyCode.value = ['', '', '', '', '', '']
+    nextTick(() => verifyRefs.value[0]?.focus())
+  } finally {
+    loading.value = false
+  }
+}
+
+async function handleResend() {
+  if (resendCooldown.value > 0) return
+  try {
+    await apiClient.post('/auth/teacher/resend', {
+      email: signupEmail.value || email.value,
+    })
+    startResendCooldown(60)
+    startTimer()
+    showToast('인증번호를 재전송했습니다.')
+  } catch (e: any) {
+    if (e.response?.status === 429) {
+      const retryAfter = parseInt(e.response.headers['retry-after'] ?? '60')
+      startResendCooldown(retryAfter)
+      showToast('잠시 후 다시 시도해주세요.')
+    } else {
+      showToast('재전송에 실패했습니다.')
+    }
+  }
+}
+
+function handleVerifyInput(i: number, e: Event) {
+  const char = (e.target as HTMLInputElement).value.replace(/\D/g, '').slice(-1)
+  verifyCode.value[i] = char
+  if (char && i < 5) nextTick(() => verifyRefs.value[i + 1]?.focus())
+}
+
+function handleVerifyKeyDown(i: number, e: KeyboardEvent) {
+  if (e.key === 'Backspace') {
+    if (verifyCode.value[i]) {
+      verifyCode.value[i] = ''
+    } else if (i > 0) {
+      verifyCode.value[i - 1] = ''
+      nextTick(() => verifyRefs.value[i - 1]?.focus())
+    }
+  }
+}
+
+function onOtpPaste(e: ClipboardEvent) {
+  e.preventDefault()
+  const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 6)
+  digits.split('').forEach((d, i) => { verifyCode.value[i] = d })
+  nextTick(() => verifyRefs.value[Math.min(Math.max(digits.length - 1, 0), 5)]?.focus())
+}
+
+onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
+  if (resendInterval) clearInterval(resendInterval)
+  if (toastTimer) clearTimeout(toastTimer)
+})
 </script>
 
 <template>
@@ -141,7 +258,7 @@ async function handleSignup() {
         style="box-shadow: 0 4px 32px rgba(27,67,138,0.1); border: 1px solid #EBF0FC;"
       >
         <!-- Tab bar -->
-        <div class="flex border-b" style="border-color: #EBF0FC;">
+        <div v-if="tab !== 'verify'" class="flex border-b" style="border-color: #EBF0FC;">
           <button
             v-for="t in (['login', 'signup'] as const)"
             :key="t"
@@ -296,7 +413,79 @@ async function handleSignup() {
                 style="font-weight: 700;"
                 @click="handleSignup"
               >
-                {{ loading ? '처리 중...' : '인증 메일 받기 →' }}
+                {{ loading ? '처리 중...' : '인증번호 받기 →' }}
+              </button>
+            </div>
+
+            <!-- ── VERIFY ──────────────────────────────────────────────────── -->
+            <div v-else key="verify">
+              <button
+                class="flex items-center gap-1 mb-6 text-sm"
+                style="color: #5A7AB8;"
+                @click="tab = 'signup'; error = null"
+              >
+                <ArrowLeft :size="16" />
+                돌아가기
+              </button>
+
+              <div class="text-center mb-8">
+                <div class="text-4xl mb-3">📧</div>
+                <h2 class="text-xl" style="color: #081830; font-weight: 800;">이메일 인증</h2>
+                <p class="text-sm mt-2" style="color: #5A7AB8;">
+                  <span style="color: #1B438A; font-weight: 700;">{{ signupEmail || email }}</span>으로<br />
+                  인증번호 6자리를 발송했어요
+                </p>
+              </div>
+
+              <div class="flex justify-center gap-2 mb-2">
+                <input
+                  v-for="(char, i) in verifyCode"
+                  :key="i"
+                  :ref="(el) => { if (el) verifyRefs[i] = el as HTMLInputElement }"
+                  type="text"
+                  inputmode="numeric"
+                  maxlength="1"
+                  :value="char"
+                  class="w-11 text-center rounded-xl outline-none text-xl transition-all"
+                  :style="char
+                    ? 'border: 2px solid #1B438A; background-color: #EBF0FC; color: #081830; font-weight: 800; height: 52px;'
+                    : 'border: 2px solid #EBF0FC; background-color: #F8FAFF; color: #081830; font-weight: 800; height: 52px;'"
+                  @input="handleVerifyInput(i, $event)"
+                  @keydown="handleVerifyKeyDown(i, $event)"
+                  @paste="onOtpPaste"
+                />
+              </div>
+
+              <div class="flex items-center justify-center gap-2 mb-6">
+                <span class="text-xs" style="color: #93B2E8;">
+                  유효시간
+                  <span style="color: #DC2626; font-weight: 700;">{{ timerDisplay }}</span>
+                </span>
+                <span style="color: #EBF0FC;">|</span>
+                <button
+                  class="text-xs"
+                  :style="resendCooldown > 0
+                    ? 'color: #93B2E8; cursor: not-allowed; font-weight: 600;'
+                    : 'color: #2653AC; font-weight: 600; cursor: pointer;'"
+                  :disabled="resendCooldown > 0"
+                  @click="handleResend"
+                >
+                  {{ resendCooldown > 0 ? `재발송 (${resendCooldown}초)` : '재발송' }}
+                </button>
+              </div>
+
+              <p v-if="error" class="text-xs text-center mb-3" style="color: #DC2626;">{{ error }}</p>
+
+              <button
+                class="w-full py-3.5 rounded-xl text-white text-sm transition-all"
+                :style="otpFilled && !loading
+                  ? 'background-color: #1B438A;'
+                  : 'background-color: #C0D0F6; cursor: not-allowed;'"
+                :disabled="!otpFilled || loading"
+                style="font-weight: 700;"
+                @click="handleVerify"
+              >
+                {{ loading ? '인증 중...' : '인증 완료 →' }}
               </button>
             </div>
 
