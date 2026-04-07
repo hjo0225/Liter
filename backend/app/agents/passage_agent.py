@@ -1,7 +1,9 @@
+from typing import Literal
+
 from openai import OpenAI
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
-from app.schemas.llm import PassageGeneration
 
 _DIFFICULTY_LABEL = {
     1: "하 (초3~4 어휘, 문장 평균 15자 이하, 단순 나열 구조)",
@@ -20,6 +22,51 @@ _SYSTEM_PROMPT = """당신은 초등학생 문해력 교육 전문가입니다.
 """
 
 MAX_ATTEMPTS = 3
+
+
+class PassageQuestion(BaseModel):
+    type: Literal["info", "reasoning", "vocabulary"]
+    question: str
+    choices: list[str] = Field(min_length=3, max_length=3)
+    correct_index: Literal[0, 1, 2]
+
+    @field_validator("question")
+    @classmethod
+    def validate_question(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("question must not be empty")
+        return value
+
+    @field_validator("choices")
+    @classmethod
+    def validate_choices(cls, value: list[str]) -> list[str]:
+        cleaned = [choice.strip() for choice in value]
+        if any(not choice for choice in cleaned):
+            raise ValueError("choices must not be empty")
+        return cleaned
+
+
+class PassageGeneration(BaseModel):
+    passage: str
+    questions: list[PassageQuestion] = Field(min_length=3, max_length=3)
+
+    @field_validator("passage")
+    @classmethod
+    def validate_passage(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("passage must not be empty")
+        return value
+
+    @field_validator("questions")
+    @classmethod
+    def validate_question_order(cls, value: list[PassageQuestion]) -> list[PassageQuestion]:
+        expected_order = ["info", "reasoning", "vocabulary"]
+        actual_order = [question.type for question in value]
+        if actual_order != expected_order:
+            raise ValueError(f"questions must follow order {expected_order}")
+        return value
 
 
 def generate_passage_and_questions(
