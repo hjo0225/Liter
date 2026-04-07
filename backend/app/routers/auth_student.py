@@ -30,7 +30,7 @@ def _issue_student_token(student_id: str) -> str:
     )
 
 
-@router.post("/join", response_model=StudentJoinResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/join", response_model=StudentJoinResponse, status_code=status.HTTP_200_OK)
 def student_join(body: StudentJoinRequest):
     classroom = (
         supabase.table("classrooms")
@@ -43,13 +43,26 @@ def student_join(body: StudentJoinRequest):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="CLASSROOM_NOT_FOUND")
 
     classroom_id = classroom.data["id"]
+    name = body.name.strip()
 
-    res = (
+    existing = (
         supabase.table("students")
-        .insert({"classroom_id": classroom_id, "name": body.name, "level": 2})
+        .select("id")
+        .eq("classroom_id", classroom_id)
+        .eq("name", name)
+        .maybe_single()
         .execute()
     )
-    student_id = res.data[0]["id"]
+
+    if existing.data:
+        student_id = existing.data["id"]
+    else:
+        res = (
+            supabase.table("students")
+            .insert({"classroom_id": classroom_id, "name": name, "level": 2})
+            .execute()
+        )
+        student_id = res.data[0]["id"]
 
     return StudentJoinResponse(
         student_id=student_id,
