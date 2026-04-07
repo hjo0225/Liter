@@ -51,7 +51,7 @@ async function handleJoin() {
   <div class="min-h-screen flex flex-col items-center justify-center px-4" style="background: #F8FAFF;">
     <!-- 로고 -->
     <div class="mb-8 flex items-center gap-3">
-      <img src="@/assets/logo.png" class="h-10 w-10 rounded-2xl object-cover" alt="토도독 로고" />
+      <img src="@/assets/logo.png" class="h-10 w-10 object-contain" alt="토도독 로고" />
       <div class="brand-font text-2xl font-bold" style="color: var(--ink-900)">토도독</div>
     </div>
 
