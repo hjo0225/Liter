@@ -44,5 +44,10 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class TeacherSignUpResponse(BaseModel):
+    message: str
+    user_id: str
+
+
 class OkResponse(BaseModel):
     ok: bool = True

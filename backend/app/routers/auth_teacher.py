@@ -1,78 +1,67 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, status
-from supabase import create_client
 
-from app.core.config import settings
+from app.core.supabase import supabase, supabase_anon
 from app.schemas.auth import (
     OkResponse,
     TeacherLoginRequest,
     TeacherResendRequest,
     TeacherSignUpRequest,
+    TeacherSignUpResponse,
     TeacherVerifyRequest,
     TokenResponse,
 )
 
 router = APIRouter(prefix="/auth/teacher", tags=["auth-teacher"])
+logger = logging.getLogger(__name__)
 
 RESEND_COOLDOWN_SECONDS = 60
 
-
-def _client():
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
-
-
-def _service_client():
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+def _looks_like_duplicate_error(exc: Exception) -> bool:
+    err_msg = str(exc).lower()
+    duplicate_tokens = ("duplicate", "already", "exists", "unique", "conflict")
+    return any(token in err_msg for token in duplicate_tokens)
 
 
-@router.post("/signup", response_model=OkResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/signup", response_model=TeacherSignUpResponse, status_code=status.HTTP_201_CREATED)
 def teacher_signup(body: TeacherSignUpRequest):
-    service = _service_client()
-
-    # 이미 가입된 이메일인지 먼저 확인
-    existing = (
-        service.table("teachers")
-        .select("id")
-        .eq("email", body.email)
-        .maybe_single()
-        .execute()
-    )
-    if existing.data is not None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
-
-    client = _client()
     try:
-        res = client.auth.sign_up({"email": body.email, "password": body.password})
+        auth_res = supabase.auth.sign_up(
+            {
+                "email": body.email,
+                "password": body.password,
+                "options": {"data": {"name": body.name}},
+            }
+        )
+        if auth_res.user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SIGNUP_FAILED")
+
+        user_id = auth_res.user.id
+        supabase.table("teachers").insert({"id": user_id, "name": body.name, "email": body.email}).execute()
+    except HTTPException:
+        raise
     except Exception as e:
         err_msg = str(e).lower()
         if "already" in err_msg or "registered" in err_msg or "exists" in err_msg:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
         if "password" in err_msg or "weak" in err_msg:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="WEAK_PASSWORD")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SIGNUP_FAILED")
+        logger.exception("Teacher signup failed for %s", body.email)
+        if _looks_like_duplicate_error(e):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    if res.user is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SIGNUP_FAILED")
-
-    user_id = res.user.id
-
-    try:
-        service.table("teachers").insert({"id": user_id, "name": body.name, "email": body.email}).execute()
-    except Exception:
-        # auth.users에는 생성됐으나 teachers 삽입 실패 — auth 유저 삭제 후 409 반환
-        try:
-            service.auth.admin.delete_user(user_id)
-        except Exception:
-            pass
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
-
-    return OkResponse()
+    return TeacherSignUpResponse(
+        message="Signup successful. Please check your email to confirm.",
+        user_id=user_id,
+    )
 
 
 @router.post("/verify", response_model=TokenResponse)
 def teacher_verify(body: TeacherVerifyRequest):
-    client = _client()
+    client = supabase_anon
 
     res = client.auth.verify_otp({"email": body.email, "token": body.token, "type": "signup"})
     if res.session is None:
@@ -83,10 +72,14 @@ def teacher_verify(body: TeacherVerifyRequest):
 
 @router.post("/resend", response_model=OkResponse)
 def teacher_resend(body: TeacherResendRequest):
-    service = _service_client()
+    service = supabase
 
     # 60초 쿨다운: teachers 테이블의 last_resend_at 확인
-    row = service.table("teachers").select("last_resend_at").eq("email", body.email).maybe_single().execute()
+    try:
+        row = service.table("teachers").select("last_resend_at").eq("email", body.email).maybe_single().execute()
+    except Exception:
+        logger.exception("Failed to load teacher resend cooldown: %s", body.email)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="RESEND_PRECHECK_FAILED")
 
     if row.data and row.data.get("last_resend_at"):
         last = datetime.fromisoformat(row.data["last_resend_at"].replace("Z", "+00:00"))
@@ -99,7 +92,7 @@ def teacher_resend(body: TeacherResendRequest):
                 headers={"Retry-After": str(retry_after)},
             )
 
-    client = _client()
+    client = supabase_anon
     client.auth.resend({"type": "signup", "email": body.email})
 
     # last_resend_at 갱신
@@ -111,7 +104,7 @@ def teacher_resend(body: TeacherResendRequest):
 
 @router.post("/login", response_model=TokenResponse)
 def teacher_login(body: TeacherLoginRequest):
-    client = _client()
+    client = supabase_anon
 
     res = client.auth.sign_in_with_password({"email": body.email, "password": body.password})
     if res.session is None:
