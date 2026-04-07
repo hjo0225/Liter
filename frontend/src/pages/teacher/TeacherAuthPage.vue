@@ -73,7 +73,9 @@ function showToast(msg: string) {
 
 function decodeJwt(token: string): Record<string, any> {
   try {
-    return JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    const part = token.split('.')[1]
+    if (!part) return {}
+    return JSON.parse(atob(part.replace(/-/g, '+').replace(/_/g, '/')))
   } catch { return {} }
 }
 
