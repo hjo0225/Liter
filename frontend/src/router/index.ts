@@ -37,6 +37,16 @@ const router = createRouter({
       component: () => import('@/pages/StudentSession.vue'),
       meta: { requiresStudentAuth: true },
     },
+    {
+      path: '/student/discussion',
+      component: () => import('@/pages/StudentDiscussion.vue'),
+      meta: { requiresStudentAuth: true },
+    },
+    {
+      path: '/student/result',
+      component: () => import('@/pages/StudentResult.vue'),
+      meta: { requiresStudentAuth: true },
+    },
   ],
 })
 

@@ -1,18 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import apiClient from '@/api/client'
 
 const router = useRouter()
 const sessionStore = useSessionStore()
-
-// 세션 없이 직접 접근 시 홈으로 리다이렉트
-onMounted(() => {
-  if (!sessionStore.sessionId) {
-    router.replace('/student/home')
-  }
-})
 
 // ──────────────────── MCQ 상태 ────────────────────
 const selectedChoice = ref<number | null>(null)
@@ -21,7 +14,6 @@ const answerError = ref<string | null>(null)
 
 const currentQuestion = computed(() => sessionStore.questions[sessionStore.currentQuestionIndex])
 
-// 문제 전환 시 선택 초기화
 watch(() => sessionStore.currentQuestionIndex, () => {
   selectedChoice.value = null
   answerError.value = null
@@ -43,6 +35,27 @@ const typeLabel = computed(() => {
 })
 
 const choicePrefix = ['①', '②', '③']
+
+// ──────────────────── 이탈 감지 ────────────────────
+function handleBeforeUnload() {
+  if (sessionStore.sessionId) {
+    const base = 'http://localhost:8000/api/v1'
+    const url = `${base}/student/sessions/${sessionStore.sessionId}`
+    navigator.sendBeacon(url)
+  }
+}
+
+onMounted(() => {
+  if (!sessionStore.sessionId) {
+    router.replace('/student/home')
+    return
+  }
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 
 // ──────────────────── 지문 읽기 액션 ────────────────────
 function handleFinishedReading() {
@@ -72,7 +85,9 @@ async function handleConfirm() {
     })
     sessionStore.recordAnswer(sessionStore.currentQuestionIndex, selectedChoice.value)
     sessionStore.nextQuestion()
-    // phase가 'done'으로 전환되면 Day 4에서 토의 화면으로 이동
+    if (sessionStore.phase === 'discussion') {
+      router.push('/student/discussion')
+    }
   } catch {
     answerError.value = '답변 저장에 실패했어요. 다시 시도해주세요.'
   } finally {
@@ -97,14 +112,12 @@ async function handleConfirm() {
             ← 홈으로
           </button>
           <div class="flex items-center gap-2">
-            <!-- 장르 태그 -->
             <span
               class="text-xs font-bold px-3 py-1 rounded-full"
               style="background: #EBF0FC; color: #1B438A;"
             >
               {{ sessionStore.passage.genre }}
             </span>
-            <!-- 난이도 별점 -->
             <span class="text-sm font-bold" style="color: #1B438A;">{{ difficultyStars }}</span>
           </div>
         </div>
@@ -216,25 +229,6 @@ async function handleConfirm() {
             {{ submitting ? '저장 중...' : '확인' }}
           </button>
         </div>
-      </div>
-    </template>
-
-    <!-- ════════════════ 완료 (Day 4 스텁) ════════════════ -->
-    <template v-else-if="sessionStore.phase === 'done'">
-      <div class="min-h-screen flex flex-col items-center justify-center px-4 text-center">
-        <div class="text-5xl mb-4">🎉</div>
-        <h2 class="font-black text-2xl mb-2" style="color: #1B438A;">문제를 모두 풀었어요!</h2>
-        <p class="text-sm mb-8" style="color: #5A7AB8;">AI 친구들과 토의를 시작할게요</p>
-        <p class="text-xs px-6 py-3 rounded-xl" style="background: #EBF0FC; color: #5A7AB8;">
-          토의 기능은 곧 추가될 예정이에요
-        </p>
-        <button
-          @click="handleExitSession"
-          class="mt-8 px-8 py-3.5 rounded-2xl font-bold text-white"
-          style="background: #1B438A;"
-        >
-          홈으로 돌아가기
-        </button>
       </div>
     </template>
 

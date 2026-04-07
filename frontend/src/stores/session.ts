@@ -15,7 +15,33 @@ interface Question {
   choices: string[]
 }
 
-export type SessionPhase = 'idle' | 'reading' | 'mcq' | 'done'
+export interface DiscussionMessage {
+  id: number
+  speaker: 'moderator' | 'peer_a' | 'peer_b' | 'user'
+  content: string
+  round: number
+}
+
+export interface SessionScores {
+  score_reasoning: number
+  score_vocabulary: number
+  score_context: number
+  feedback: string
+  streak_count: number
+  question_results: QuestionResult[]
+}
+
+export interface QuestionResult {
+  question_index: number
+  question_type: string
+  question_text: string
+  choices: string[]
+  correct_index: number
+  selected_index: number | null
+  is_correct: boolean | null
+}
+
+export type SessionPhase = 'idle' | 'reading' | 'mcq' | 'discussion' | 'done'
 
 export const useSessionStore = defineStore('session', () => {
   const sessionId = ref<string | null>(null)
@@ -24,6 +50,13 @@ export const useSessionStore = defineStore('session', () => {
   const currentQuestionIndex = ref(0) // 0-based
   const answers = ref<(number | null)[]>([null, null, null])
   const phase = ref<SessionPhase>('idle')
+
+  // 토의 상태
+  const allCorrect = ref<boolean | null>(null)
+  const discussionMessages = ref<DiscussionMessage[]>([])
+  const scores = ref<SessionScores | null>(null)
+
+  let _msgIdCounter = 0
 
   function startSession(data: {
     session_id: string
@@ -36,6 +69,10 @@ export const useSessionStore = defineStore('session', () => {
     currentQuestionIndex.value = 0
     answers.value = [null, null, null]
     phase.value = 'reading'
+    allCorrect.value = null
+    discussionMessages.value = []
+    scores.value = null
+    _msgIdCounter = 0
   }
 
   function goToMcq() {
@@ -50,8 +87,17 @@ export const useSessionStore = defineStore('session', () => {
     if (currentQuestionIndex.value < 2) {
       currentQuestionIndex.value++
     } else {
-      phase.value = 'done'
+      phase.value = 'discussion'
     }
+  }
+
+  function addDiscussionMessage(msg: Omit<DiscussionMessage, 'id'>) {
+    discussionMessages.value.push({ ...msg, id: ++_msgIdCounter })
+  }
+
+  function setScores(data: SessionScores) {
+    scores.value = data
+    phase.value = 'done'
   }
 
   function reset() {
@@ -61,6 +107,10 @@ export const useSessionStore = defineStore('session', () => {
     currentQuestionIndex.value = 0
     answers.value = [null, null, null]
     phase.value = 'idle'
+    allCorrect.value = null
+    discussionMessages.value = []
+    scores.value = null
+    _msgIdCounter = 0
   }
 
   return {
@@ -70,10 +120,15 @@ export const useSessionStore = defineStore('session', () => {
     currentQuestionIndex,
     answers,
     phase,
+    allCorrect,
+    discussionMessages,
+    scores,
     startSession,
     goToMcq,
     recordAnswer,
     nextQuestion,
+    addDiscussionMessage,
+    setScores,
     reset,
   }
 })
