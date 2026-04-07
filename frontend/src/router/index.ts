@@ -11,7 +11,7 @@ const router = createRouter({
     },
     {
       path: '/teacher',
-      component: () => import('@/pages/TeacherAuthPage.vue'),
+      component: () => import('@/pages/teacher/TeacherAuthPage.vue'),
     },
     {
       path: '/teacher/classrooms',
