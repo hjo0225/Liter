@@ -181,14 +181,14 @@ def start_session(student_id: str = Depends(get_current_student)):
     session_id = session_res.data[0]["id"]
 
     # 7. question_results 3개 INSERT
-    for i, q in enumerate(content_data["questions"]):
+    for i, q in enumerate(content_data.questions):
         supabase.table("question_results").insert({
             "session_id": session_id,
             "question_index": i + 1,
-            "question_type": q["type"],
-            "question_text": q["question"],
-            "choices": q["choices"],
-            "correct_index": q["correct_index"],
+            "question_type": q.type,
+            "question_text": q.question,
+            "choices": q.choices,
+            "correct_index": q.correct_index,
             "selected_index": None,
             "is_correct": None,
         }).execute()
