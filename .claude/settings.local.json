@@ -10,7 +10,14 @@
       "Bash(python3 -m json.tool)",
       "Bash(nvm list:*)",
       "Bash(fnm list:*)",
-      "Bash(find frontend/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.vue\" \\\\\\) -exec wc -l {} +)"
+      "Bash(find frontend/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.vue\" \\\\\\) -exec wc -l {} +)",
+      "Bash(find . -name \"*.vue\" -exec grep -l \"apiClient\\\\|axios\" {} \\\\;)",
+      "Bash(grep -n \"def _service_client\\\\|_service_client\\(\\)\" backend/app/routers/*.py)",
+      "Bash(find . -name \"*.py\" -type f ! -path \"./node_modules/*\" -exec wc -l {} +)",
+      "Bash(xargs wc:*)",
+      "Bash(python -c \"from app.routers import auth_student, auth_teacher, internal, student, teacher; print\\('student.router:', student.router\\); print\\('OK'\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python -m py_compile app/core/constants.py app/routers/auth_student.py app/routers/internal.py app/routers/teacher.py app/routers/student/__init__.py app/routers/student/session.py app/routers/student/discussion.py app/routers/student/scoring.py)"
     ]
   }
 }

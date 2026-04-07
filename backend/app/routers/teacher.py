@@ -67,14 +67,36 @@ def list_classrooms(current: TeacherProfile = Depends(get_current_teacher)):
 
 @router.post("/classrooms", response_model=ClassroomCreateResponse, status_code=status.HTTP_201_CREATED)
 def create_classroom(body: ClassroomCreate, current: TeacherProfile = Depends(get_current_teacher)):
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="학급 이름을 입력해주세요.")
+
     join_code = _generate_join_code()
 
     res = (
         supabase.table("classrooms")
-        .insert({"name": body.name, "teacher_id": current.user_id, "join_code": join_code})
+        .insert({"name": name, "teacher_id": current.user_id, "join_code": join_code})
         .execute()
     )
-    row = res.data[0]
+
+    row = res.data[0] if res.data else None
+    if row is None:
+        created = (
+            supabase.table("classrooms")
+            .select("id, join_code")
+            .eq("teacher_id", current.user_id)
+            .eq("join_code", join_code)
+            .maybe_single()
+            .execute()
+        )
+        row = created.data
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="학급은 생성되었지만 응답을 확인하지 못했습니다. 새로고침 후 다시 확인해주세요.",
+        )
+
     return ClassroomCreateResponse(id=row["id"], join_code=row["join_code"])
 
 

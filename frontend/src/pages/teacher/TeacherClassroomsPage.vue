@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { Plus, Copy, Check, ChevronRight, LogOut, Users } from 'lucide-vue-next'
 import apiClient from '@/api/client'
 import { useTeacherStore } from '@/stores/teacher'
@@ -43,13 +44,18 @@ async function handleCreate() {
   createError.value = null
   creating.value = true
   try {
-    const { data } = await apiClient.post('/teacher/classrooms', { name: newName.value.trim() })
+    await apiClient.post('/teacher/classrooms', { name: newName.value.trim() })
     // 목록 재조회로 student_count 등 최신 상태 반영
     await fetchClassrooms()
     newName.value = ''
     showCreate.value = false
   } catch (e: any) {
-    createError.value = '학급 생성에 실패했습니다.'
+    if (axios.isAxiosError(e)) {
+      const detail = e.response?.data?.detail
+      createError.value = typeof detail === 'string' ? detail : '학급 생성에 실패했습니다.'
+    } else {
+      createError.value = '학급 생성에 실패했습니다.'
+    }
   } finally {
     creating.value = false
   }
