@@ -9,7 +9,8 @@
       "Bash(npx playwright:*)",
       "Bash(python3 -m json.tool)",
       "Bash(nvm list:*)",
-      "Bash(fnm list:*)"
+      "Bash(fnm list:*)",
+      "Bash(find frontend/src -type f \\\\\\( -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.vue\" \\\\\\) -exec wc -l {} +)"
     ]
   }
 }

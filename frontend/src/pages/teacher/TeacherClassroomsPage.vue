@@ -61,9 +61,15 @@ function handleCopy(code: string) {
   setTimeout(() => { copiedCode.value = null }, 2000)
 }
 
-function handleLogout() {
-  teacherStore.logout()
-  router.push('/teacher')
+async function handleLogout() {
+  try {
+    await apiClient.post('/auth/teacher/logout')
+  } catch (e) {
+    console.error('Teacher logout failed', e)
+  } finally {
+    teacherStore.logout()
+    router.push('/teacher')
+  }
 }
 
 function openCreate() {

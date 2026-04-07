@@ -14,10 +14,6 @@ const router = createRouter({
       component: () => import('@/pages/teacher/TeacherAuthPage.vue'),
     },
     {
-      path: '/auth/callback',
-      component: () => import('@/pages/AuthCallbackPage.vue'),
-    },
-    {
       path: '/teacher/classrooms',
       component: () => import('@/pages/teacher/TeacherClassroomsPage.vue'),
       meta: { requiresTeacherAuth: true },
