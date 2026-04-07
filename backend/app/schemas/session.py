@@ -58,3 +58,8 @@ class StudentMeResponse(BaseModel):
     level: int
     streak_count: int
     today_session_count: int
+    classroom_name: str | None = None
+    weak_areas: list[str] = []
+    recent_average_score: float | None = None
+    weekly_completed_count: int = 0
+    total_completed_count: int = 0

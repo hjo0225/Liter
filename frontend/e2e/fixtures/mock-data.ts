@@ -24,6 +24,11 @@ export const MOCK_ME_RESPONSE = {
   level: 2,
   streak_count: 3,
   today_session_count: 0,
+  classroom_name: '5학년 2반',
+  weak_areas: ['reasoning'],
+  recent_average_score: 7.4,
+  weekly_completed_count: 4,
+  total_completed_count: 19,
 }
 
 export const MOCK_SESSION_RESPONSE = {
@@ -127,6 +132,18 @@ export const MOCK_CLASSROOM_CREATE_RESPONSE = {
 
 export const MOCK_DASHBOARD_RESPONSE = {
   classroom_name: '5학년 2반',
+  summary: {
+    total_students: 2,
+    active_today: 1,
+    completed_today: 1,
+    average_recent_score: 5.9,
+    average_streak: 2.0,
+    attention_count: 1,
+  },
+  weak_area_summary: [
+    { area: 'reasoning', count: 2 },
+    { area: 'vocabulary', count: 1 },
+  ],
   students: [
     {
       id: 'stu-001',
@@ -137,6 +154,8 @@ export const MOCK_DASHBOARD_RESPONSE = {
       streak_count: 3,
       recent_avg: 7.2,
       needs_attention: false,
+      completed_sessions: 11,
+      today_completed: true,
       score_history: [],
     },
     {
@@ -148,6 +167,8 @@ export const MOCK_DASHBOARD_RESPONSE = {
       streak_count: 1,
       recent_avg: 4.5,
       needs_attention: true,
+      completed_sessions: 5,
+      today_completed: false,
       score_history: [],
     },
   ],

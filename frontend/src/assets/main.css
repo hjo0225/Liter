@@ -1,14 +1,137 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=SUIT:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 
 :root {
-  --navy-900: #081830;
-  --navy-500: #1B438A;
-  --navy-400: #2653AC;
-  --navy-300: #4170CC;
-  --navy-200: #80A0E8;
-  --navy-100: #C0D0F6;
-  --navy-50: #EBF0FC;
-  --muted-fg: #5A7AB8;
-  --bg: #F8FAFF;
-  --destructive: #DC2626;
+  --ink-950: #07111f;
+  --ink-900: #0f1f38;
+  --ink-700: #23426d;
+  --ink-500: #496f9f;
+  --ink-300: #8da9cc;
+  --ink-200: #c7d8ec;
+  --ink-100: #e8f0fb;
+  --bg: #f4f7fc;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-strong: #ffffff;
+  --accent: #1f5fff;
+  --accent-strong: #1847bc;
+  --accent-soft: #dce8ff;
+  --success-soft: #daf5e8;
+  --success-strong: #0f8a5f;
+  --warning-soft: #fff1d6;
+  --warning-strong: #b86a00;
+  --danger-soft: #ffe1e1;
+  --danger-strong: #cc3d3d;
+  --shadow-lg: 0 24px 80px rgba(7, 17, 31, 0.12);
+  --shadow-md: 0 12px 40px rgba(15, 31, 56, 0.08);
+  --radius-xl: 28px;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(31, 95, 255, 0.09), transparent 34%),
+    linear-gradient(180deg, #f7f9fd 0%, #edf3fb 100%);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--ink-900);
+  font-family: "SUIT", "Pretendard", sans-serif;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+.display-font {
+  font-family: "Space Grotesk", "SUIT", sans-serif;
+  letter-spacing: -0.04em;
+}
+
+.glass-panel {
+  background: var(--surface);
+  border: 1px solid rgba(199, 216, 236, 0.9);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(18px);
+}
+
+.soft-card {
+  background: var(--surface-strong);
+  border: 1px solid var(--ink-100);
+  border-radius: 24px;
+  box-shadow: 0 8px 28px rgba(31, 44, 74, 0.06);
+}
+
+.section-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.section-shell::before {
+  content: "";
+  position: absolute;
+  inset: auto -120px -120px auto;
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(31, 95, 255, 0.16), transparent 70%);
+  pointer-events: none;
+}
+
+.mesh-hero {
+  background:
+    radial-gradient(circle at 20% 20%, rgba(132, 169, 255, 0.35), transparent 24%),
+    radial-gradient(circle at 80% 0%, rgba(31, 95, 255, 0.28), transparent 22%),
+    linear-gradient(140deg, #081321 0%, #10294b 56%, #1f5fff 100%);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: white;
+  box-shadow: 0 12px 24px rgba(31, 95, 255, 0.24);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.14);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.metric-value {
+  font-family: "Space Grotesk", "SUIT", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.05em;
+}
+
+.fade-rise {
+  animation: fadeRise 0.55s ease both;
+}
+
+.fade-rise-delay {
+  animation: fadeRise 0.7s ease 0.12s both;
+}
+
+@keyframes fadeRise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

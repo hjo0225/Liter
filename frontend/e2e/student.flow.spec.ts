@@ -84,7 +84,17 @@ test.describe('학생 플로우', () => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ name: '테스트학생', level: 2, streak_count: 3, today_session_count: 3 }),
+        body: JSON.stringify({
+          name: '테스트학생',
+          level: 2,
+          streak_count: 3,
+          today_session_count: 3,
+          classroom_name: '5학년 2반',
+          weak_areas: ['reasoning'],
+          recent_average_score: 7.4,
+          weekly_completed_count: 4,
+          total_completed_count: 19,
+        }),
       }),
     )
     await page.route('**/api/v1/student/sessions/today-count', (route) =>
