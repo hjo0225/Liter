@@ -132,7 +132,7 @@
             v-for="(step, i) in steps"
             :key="i"
             class="relative scroll-fade"
-            :ref="el => setRef(el, i)"
+            :ref="setRef"
           >
             <div
               v-if="i < steps.length - 1"
@@ -327,14 +327,24 @@ const steps = [
   { num: '03', emoji: '✨', title: 'AI와 함께 매일 학습', desc: '지문 읽기 → 객관식 → AI 토의 순서로 15~20분 세션을 진행해요.' },
 ]
 
-const sessionFlow = [
-  { emoji: '📄', step: '단계 1', title: '지문 읽기', desc: 'AI 생성 지문\n250~400자', color: '#EBF0FC', textColor: '#1B438A', isArrow: false },
-  { isArrow: true },
-  { emoji: '✏️', step: '단계 2', title: '객관식 문항', desc: '3지선다 3문제\n정보·추론·어휘', color: '#E8F0FD', textColor: '#1B438A', isArrow: false },
-  { isArrow: true },
-  { emoji: '💬', step: '단계 3', title: 'AI 그룹 토의', desc: '또래 AI 3인\n최대 10라운드', color: '#DDE8FC', textColor: '#163674', isArrow: false },
-  { isArrow: true },
-  { emoji: '🏆', step: '결과', title: '점수 + streak', desc: '3종 점수 확인\nstreak 갱신', color: '#D4E1FC', textColor: '#112B5C', isArrow: false },
+interface SessionStep {
+  isArrow: boolean
+  emoji: string
+  step: string
+  title: string
+  desc: string
+  color: string
+  textColor: string
+}
+
+const sessionFlow: SessionStep[] = [
+  { isArrow: false, emoji: '📄', step: '단계 1', title: '지문 읽기', desc: 'AI 생성 지문\n250~400자', color: '#EBF0FC', textColor: '#1B438A' },
+  { isArrow: true, emoji: '', step: '', title: '', desc: '', color: '', textColor: '' },
+  { isArrow: false, emoji: '✏️', step: '단계 2', title: '객관식 문항', desc: '3지선다 3문제\n정보·추론·어휘', color: '#E8F0FD', textColor: '#1B438A' },
+  { isArrow: true, emoji: '', step: '', title: '', desc: '', color: '', textColor: '' },
+  { isArrow: false, emoji: '💬', step: '단계 3', title: 'AI 그룹 토의', desc: '또래 AI 3인\n최대 10라운드', color: '#DDE8FC', textColor: '#163674' },
+  { isArrow: true, emoji: '', step: '', title: '', desc: '', color: '', textColor: '' },
+  { isArrow: false, emoji: '🏆', step: '결과', title: '점수 + streak', desc: '3종 점수 확인\nstreak 갱신', color: '#D4E1FC', textColor: '#112B5C' },
 ]
 
 const features = [
@@ -360,9 +370,8 @@ const studentFeatures = [
   '내 수준에 딱 맞는 지문 제공',
 ]
 
-// Scroll fade-in using IntersectionObserver
-function setRef(el: Element | null, _i: number) {
-  if (!el) return
+function setRef(el: unknown) {
+  if (!(el instanceof Element)) return
   const observer = new IntersectionObserver(
     ([entry]) => {
       if (entry.isIntersecting) {
@@ -371,7 +380,7 @@ function setRef(el: Element | null, _i: number) {
         observer.disconnect()
       }
     },
-    { threshold: 0.1 }
+    { threshold: 0.1 },
   )
   observer.observe(el)
 }
