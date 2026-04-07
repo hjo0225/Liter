@@ -4,7 +4,7 @@
     <nav class="sticky top-0 z-50 border-b" style="background-color: white; border-color: #C8D9F6">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <img src="@/assets/logo.png" class="h-10 w-10 object-contain" alt="토도독 로고" />
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl text-2xl" style="background: linear-gradient(135deg, #1f5fff, #10294b)">📚</div>
           <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
         <div class="hidden md:flex items-center gap-8">
@@ -18,7 +18,7 @@
             class="px-4 py-2 rounded-lg text-sm transition-all"
             style="background-color: #EBF0FC; color: #1B438A; font-weight: 600"
           >
-            학생 입장 🎒
+            학생 입장
           </button>
           <button
             @click="router.push('/teacher')"
@@ -60,7 +60,7 @@
             style="color: white; font-weight: 800; line-height: 1.2; letter-spacing: -1px"
           >
             읽고, 생각하고,<br />
-            <span style="color: #80A0E8">함께 토의해요</span> 📚
+            <span style="color: #80A0E8">함께 토의해요</span>
           </h1>
           <p class="text-lg md:text-xl mb-8 leading-relaxed" style="color: #93B2E8; max-width: 540px">
             초등 4~6학년을 위한 AI 문해력 학습 플랫폼이에요.
@@ -287,7 +287,7 @@
       <div class="max-w-6xl mx-auto px-6">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <img src="@/assets/logo.png" class="h-9 w-9 object-contain" alt="토도독 로고" />
+            <div class="flex h-9 w-9 items-center justify-center rounded-xl text-xl" style="background: linear-gradient(135deg, #1f5fff, #10294b)">📚</div>
             <span class="brand-font text-2xl font-bold" style="color: white">토도독</span>
             <span class="text-xs ml-2" style="color: #5A7AB8">AI 기반 초등 문해력 토의 플랫폼</span>
           </div>

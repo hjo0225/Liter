@@ -125,7 +125,7 @@ onUnmounted(() => {
           홈으로
         </button>
         <div class="flex items-center gap-3">
-          <img src="@/assets/logo.png" class="h-10 w-10 object-contain" alt="토도독 로고" />
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl text-2xl" style="background: linear-gradient(135deg, #1f5fff, #10294b)">📚</div>
           <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
       </div>
