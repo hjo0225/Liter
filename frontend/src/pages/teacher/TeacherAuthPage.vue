@@ -124,8 +124,12 @@ async function handleSignup() {
     const detail = e.response?.data?.detail
     if (e.response?.status === 409 || detail === 'EMAIL_ALREADY_EXISTS') {
       error.value = '이미 가입된 이메일입니다. 로그인해 주세요.'
+    } else if (detail === 'WEAK_PASSWORD') {
+      error.value = '비밀번호는 6자 이상이어야 합니다.'
     } else if (e.response?.status === 400) {
-      error.value = '입력 정보를 확인해 주세요. (비밀번호 6자 이상)'
+      error.value = '입력 정보를 확인해 주세요.'
+    } else if (!e.response) {
+      error.value = '서버에 연결할 수 없습니다. 네트워크를 확인해 주세요.'
     } else {
       error.value = '회원가입에 실패했습니다. 잠시 후 다시 시도해 주세요.'
     }

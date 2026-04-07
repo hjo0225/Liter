@@ -42,13 +42,30 @@ def teacher_signup(body: TeacherSignUpRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
 
     client = _client()
-    res = client.auth.sign_up({"email": body.email, "password": body.password})
+    try:
+        res = client.auth.sign_up({"email": body.email, "password": body.password})
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "already" in err_msg or "registered" in err_msg or "exists" in err_msg:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
+        if "password" in err_msg or "weak" in err_msg:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="WEAK_PASSWORD")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SIGNUP_FAILED")
+
     if res.user is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SIGNUP_FAILED")
 
     user_id = res.user.id
 
-    service.table("teachers").insert({"id": user_id, "name": body.name, "email": body.email}).execute()
+    try:
+        service.table("teachers").insert({"id": user_id, "name": body.name, "email": body.email}).execute()
+    except Exception:
+        # auth.users에는 생성됐으나 teachers 삽입 실패 — auth 유저 삭제 후 409 반환
+        try:
+            service.auth.admin.delete_user(user_id)
+        except Exception:
+            pass
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="EMAIL_ALREADY_EXISTS")
 
     return OkResponse()
 
