@@ -7,22 +7,17 @@
           <div class="flex h-10 w-10 items-center justify-center rounded-xl text-2xl" style="background: linear-gradient(135deg, #1f5fff, #10294b)">📚</div>
           <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
-        <div class="hidden md:flex items-center gap-8">
-          <a href="#features" class="text-sm cursor-pointer hover:opacity-80 transition-opacity" style="color: #5A7AB8; font-weight: 500">기능</a>
-          <a href="#how-it-works" class="text-sm cursor-pointer hover:opacity-80 transition-opacity" style="color: #5A7AB8; font-weight: 500">사용 방법</a>
-          <a href="#faq" class="text-sm cursor-pointer hover:opacity-80 transition-opacity" style="color: #5A7AB8; font-weight: 500">FAQ</a>
-        </div>
         <div class="flex items-center gap-3">
           <button
             @click="router.push('/student/join')"
-            class="px-4 py-2 rounded-lg text-sm transition-all"
+            class="min-w-[112px] px-4 py-2 rounded-lg text-sm transition-all"
             style="background-color: #EBF0FC; color: #1B438A; font-weight: 600"
           >
-            학생 입장
+            학생 로그인
           </button>
           <button
             @click="router.push('/teacher')"
-            class="px-4 py-2 rounded-lg text-sm text-white transition-all hover:opacity-90"
+            class="min-w-[112px] px-4 py-2 rounded-lg text-sm text-white transition-all hover:opacity-90"
             style="background-color: #1B438A; font-weight: 600"
           >
             교사 로그인
@@ -53,7 +48,7 @@
             style="background-color: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2)"
           >
             <span class="text-sm">✨</span>
-            <span class="text-sm" style="color: #C0D0F6; font-weight: 500">AI 기반 초등 문해력 토의 플랫폼</span>
+            <span class="text-sm" style="color: #C0D0F6; font-weight: 500">멀티에이전트 기반 초개인화 문해력 솔루션</span>
           </div>
           <h1
             class="text-4xl md:text-5xl lg:text-6xl mb-6"
@@ -72,7 +67,7 @@
               class="flex items-center gap-2 px-6 py-3.5 rounded-xl text-white transition-all hover:opacity-90 active:scale-95"
               style="background: linear-gradient(135deg, #2653AC, #4170CC); font-weight: 700; box-shadow: 0 4px 20px rgba(65,112,204,0.4)"
             >
-              <span>학생으로 시작하기</span>
+              <span>학생 로그인</span>
               <ArrowRight :size="18" />
             </button>
             <button
@@ -236,7 +231,7 @@
               class="w-full py-3 rounded-xl text-sm transition-all hover:opacity-90 active:scale-95"
               style="background-color: rgba(255,255,255,0.15); color: white; font-weight: 700; border: 1px solid rgba(255,255,255,0.2)"
             >
-              학생으로 입장하기 →
+              학생 로그인 →
             </button>
           </div>
         </div>
@@ -262,7 +257,7 @@
             class="px-8 py-4 rounded-xl text-sm transition-all hover:opacity-90 active:scale-95"
             style="background-color: white; color: #1B438A; font-weight: 700; border: 2px solid #C0D0F6"
           >
-            학생으로 입장하기 🎒
+            학생 로그인 🎒
           </button>
         </div>
       </div>
