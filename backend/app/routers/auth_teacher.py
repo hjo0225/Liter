@@ -46,15 +46,6 @@ def _get_teacher_by_id(user_id: str):
     )
 
 
-def _get_teacher_by_email(email: str):
-    return (
-        supabase.table("teachers")
-        .select("id, email, name")
-        .eq("email", email)
-        .maybe_single()
-        .execute()
-    )
-
 
 def _build_auth_response(user_id: str, email: str, name: str, session) -> TeacherAuthResponse:
     if session is None or not session.access_token or not session.refresh_token:
@@ -100,32 +91,9 @@ def teacher_signup(body: TeacherSignupRequest):
         raise HTTPException(status_code=http_status, detail=message)
 
     try:
-        existing_teacher = _get_teacher_by_id(user_id)
-        if existing_teacher.data:
-            logger.warning(
-                "Teacher signup retried for existing profile: email=%s user_id=%s",
-                email,
-                user_id,
-            )
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 가입된 이메일입니다.")
-
         supabase.table("teachers").insert({"id": user_id, "name": name, "email": email}).execute()
     except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
-
         logger.exception("Teacher profile insert failed for %s (user_id=%s)", email, user_id)
-        teacher_by_id = _get_teacher_by_id(user_id) if user_id else None
-        teacher_by_email = _get_teacher_by_email(email)
-
-        if (teacher_by_id and teacher_by_id.data) or teacher_by_email.data:
-            logger.warning(
-                "Teacher signup collided with existing profile: email=%s user_id=%s",
-                email,
-                user_id,
-            )
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 가입된 이메일입니다.")
-
         if user_id:
             try:
                 supabase.auth.admin.delete_user(user_id)
