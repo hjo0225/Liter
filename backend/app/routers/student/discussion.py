@@ -9,6 +9,7 @@ from app.agents.discussion_agent import call_moderator, call_peer_a, call_peer_b
 from app.core.constants import MAX_DISCUSSION_ROUNDS
 from app.core.deps import get_current_student
 from app.core.supabase import supabase
+from app.schemas.llm import PassageGeneration
 from app.schemas.session import DiscussionRequest
 
 router = APIRouter()
@@ -61,8 +62,11 @@ async def discussion(
     )
     passage_content = ""
     if passage_res.data and passage_res.data.get("generated_content"):
-        p_data = json.loads(passage_res.data["generated_content"])
-        passage_content = p_data.get("passage", "")
+        try:
+            p_data = PassageGeneration.model_validate_json(passage_res.data["generated_content"])
+            passage_content = p_data.passage
+        except Exception:
+            logger.exception("Invalid generated_content in discussion: session_id=%s", session_id)
 
     qr_res = (
         supabase.table("question_results")

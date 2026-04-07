@@ -1,11 +1,10 @@
-import json
-
 from openai import OpenAI
 
 from app.core.config import settings
+from app.schemas.llm import DiagnosisResult
 
 _SYSTEM_PROMPT = """당신은 초등학생 문해력 진단 전문가입니다.
-학생의 첫 번째 세션 결과를 분석해 수준과 약점을 JSON으로 반환하세요.
+학생의 첫 번째 세션 결과를 분석해 수준과 약점을 반환하세요.
 
 level 판정 기준:
 - 3문제 모두 정답: level 3
@@ -14,8 +13,7 @@ level 판정 기준:
 
 weak_areas: 틀린 문제의 type 값 배열 (info, reasoning, vocabulary 중)
 
-출력 형식 (JSON만, 설명 없이):
-{"level": 1 또는 2 또는 3, "weak_areas": []}"""
+"""
 
 MAX_ATTEMPTS = 3
 
@@ -41,11 +39,11 @@ def diagnose_student(question_results: list[dict]) -> dict:
     user_message = f"학생 결과:\n{results_text}\n\n위 결과를 바탕으로 level과 weak_areas를 JSON으로 반환하세요."
 
     last_error: Exception | None = None
-    for attempt in range(MAX_ATTEMPTS):
+    for _ in range(MAX_ATTEMPTS):
         try:
-            response = client.chat.completions.create(
+            completion = client.beta.chat.completions.parse(
                 model="gpt-4o-mini",
-                response_format={"type": "json_object"},
+                response_format=DiagnosisResult,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_message},
@@ -53,13 +51,10 @@ def diagnose_student(question_results: list[dict]) -> dict:
                 temperature=0,
                 max_tokens=100,
             )
-            raw = response.choices[0].message.content or ""
-            result = json.loads(raw)
-            if result.get("level") not in (1, 2, 3):
-                raise ValueError(f"invalid level: {result.get('level')}")
-            if not isinstance(result.get("weak_areas"), list):
-                raise ValueError("weak_areas must be a list")
-            return result
+            parsed = completion.choices[0].message.parsed
+            if parsed is None:
+                raise ValueError("empty structured output")
+            return parsed.model_dump()
         except Exception as e:
             last_error = e
             continue

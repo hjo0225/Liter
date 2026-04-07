@@ -1,4 +1,3 @@
-import json
 import logging
 import random
 from datetime import date, datetime, timezone
@@ -10,6 +9,7 @@ from app.agents.passage_agent import generate_passage_and_questions
 from app.core.constants import DAILY_SESSION_LIMIT
 from app.core.deps import get_current_student
 from app.core.supabase import supabase
+from app.schemas.llm import PassageGeneration
 from app.schemas.session import (
     AnswerSubmitRequest,
     AnswerSubmitResponse,
@@ -153,11 +153,16 @@ def start_session(student_id: str = Depends(get_current_student)):
         except RuntimeError:
             raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="GENERATION_FAILED")
 
-        content_json = json.dumps(generated, ensure_ascii=False)
+        generated_content = PassageGeneration.model_validate(generated)
+        content_json = generated_content.model_dump_json()
         supabase.table("passages").update({"generated_content": content_json}).eq("id", passage["id"]).execute()
         passage["generated_content"] = content_json
 
-    content_data = json.loads(passage["generated_content"])
+    try:
+        content_data = PassageGeneration.model_validate_json(passage["generated_content"])
+    except Exception:
+        logger.exception("Invalid generated_content for passage_id=%s", passage["id"])
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="INVALID_PASSAGE_CONTENT")
 
     # 6. session INSERT
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -191,17 +196,17 @@ def start_session(student_id: str = Depends(get_current_student)):
     questions_out = [
         QuestionOut(
             index=i + 1,
-            type=q["type"],
-            text=q["question"],
-            choices=q["choices"],
+            type=q.type,
+            text=q.question,
+            choices=q.choices,
         )
-        for i, q in enumerate(content_data["questions"])
+        for i, q in enumerate(content_data.questions)
     ]
     passage_out = PassageOut(
         title=passage["title"],
         genre=passage["genre"],
         difficulty=passage["difficulty"],
-        content=content_data["passage"],
+        content=content_data.passage,
     )
 
     return SessionStartResponse(
