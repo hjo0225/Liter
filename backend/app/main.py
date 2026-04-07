@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client
 
 from app.core.config import settings
-from app.routers import auth_student, auth_teacher, student, teacher
+from app.routers import auth_student, auth_teacher, internal, student, teacher
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -40,6 +40,7 @@ app.include_router(auth_teacher.router, prefix="/api/v1")
 app.include_router(auth_student.router, prefix="/api/v1")
 app.include_router(teacher.router, prefix="/api/v1")
 app.include_router(student.router, prefix="/api/v1")
+app.include_router(internal.router, prefix="/api/v1")
 
 
 @app.get("/health")
