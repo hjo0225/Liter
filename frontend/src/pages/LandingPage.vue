@@ -4,10 +4,8 @@
     <nav class="sticky top-0 z-50 border-b" style="background-color: white; border-color: #C8D9F6">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
-            <Sparkles :size="18" />
-          </div>
-          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
+          <img src="@/assets/logo.png" class="h-10 w-10 rounded-2xl object-cover" alt="토도독 로고" />
+          <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
         <div class="hidden md:flex items-center gap-8">
           <a href="#features" class="text-sm cursor-pointer hover:opacity-80 transition-opacity" style="color: #5A7AB8; font-weight: 500">기능</a>
@@ -289,10 +287,8 @@
       <div class="max-w-6xl mx-auto px-6">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
           <div class="flex items-center gap-3">
-            <div class="flex h-9 w-9 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
-              <Sparkles :size="16" />
-            </div>
-            <span class="brand-font text-xl font-bold" style="color: white">토도독</span>
+            <img src="@/assets/logo.png" class="h-9 w-9 rounded-2xl object-cover" alt="토도독 로고" />
+            <span class="brand-font text-2xl font-bold" style="color: white">토도독</span>
             <span class="text-xs ml-2" style="color: #5A7AB8">AI 기반 초등 문해력 토의 플랫폼</span>
           </div>
           <div class="text-xs" style="color: #2653AC">© 2026 토도독. 초등 4~6학년 문해력 교육을 위해 만들었어요.</div>
@@ -304,7 +300,7 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
-import { ArrowRight, ChevronRight, Sparkles } from 'lucide-vue-next'
+import { ArrowRight, ChevronRight } from 'lucide-vue-next'
 
 const router = useRouter()
 

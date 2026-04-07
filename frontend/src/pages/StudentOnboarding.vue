@@ -3,7 +3,6 @@ import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStudentStore } from '@/stores/student'
 import apiClient from '@/api/client'
-import { Sparkles } from 'lucide-vue-next'
 
 const router = useRouter()
 const studentStore = useStudentStore()
@@ -52,10 +51,8 @@ async function handleJoin() {
   <div class="min-h-screen flex flex-col items-center justify-center px-4" style="background: #F8FAFF;">
     <!-- 로고 -->
     <div class="mb-8 flex items-center gap-3">
-      <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
-        <Sparkles :size="18" />
-      </div>
-      <div class="brand-font text-xl font-bold" style="color: var(--ink-900)">토도독</div>
+      <img src="@/assets/logo.png" class="h-10 w-10 rounded-2xl object-cover" alt="토도독 로고" />
+      <div class="brand-font text-2xl font-bold" style="color: var(--ink-900)">토도독</div>
     </div>
 
     <!-- 카드 -->

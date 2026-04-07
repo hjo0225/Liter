@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Eye, EyeOff, ArrowLeft, Sparkles } from 'lucide-vue-next'
+import { Eye, EyeOff, ArrowLeft } from 'lucide-vue-next'
 import apiClient from '@/api/client'
 import { useTeacherStore } from '@/stores/teacher'
 
@@ -125,10 +125,8 @@ onUnmounted(() => {
           홈으로
         </button>
         <div class="flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
-            <Sparkles :size="18" />
-          </div>
-          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
+          <img src="@/assets/logo.png" class="h-10 w-10 rounded-2xl object-cover" alt="토도독 로고" />
+          <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
       </div>
 

@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { Plus, Copy, Check, ChevronRight, LogOut, Users, Sparkles } from 'lucide-vue-next'
+import { Plus, Copy, Check, ChevronRight, LogOut, Users } from 'lucide-vue-next'
 import apiClient from '@/api/client'
 import { useTeacherStore } from '@/stores/teacher'
 
@@ -95,10 +95,8 @@ onMounted(fetchClassrooms)
       <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         <!-- Logo -->
         <button class="flex items-center gap-3" @click="router.push('/')">
-          <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
-            <Sparkles :size="18" />
-          </div>
-          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
+          <img src="@/assets/logo.png" class="h-10 w-10 rounded-2xl object-cover" alt="토도독 로고" />
+          <div class="brand-font text-2xl font-bold" style="color: #10294b">토도독</div>
           <span class="px-2.5 py-1 rounded-full text-xs" style="background-color: #EBF0FC; color: #1B438A; font-weight: 600;">
             교사 대시보드
           </span>
