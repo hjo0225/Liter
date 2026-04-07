@@ -29,7 +29,7 @@ def get_me(student_id: str = Depends(get_current_student)):
 
     student_res = (
         supabase.table("students")
-        .select("name, level, streak_count")
+        .select("name, level, streak_count, classrooms(name)")
         .eq("id", student_id)
         .single()
         .execute()
@@ -47,11 +47,13 @@ def get_me(student_id: str = Depends(get_current_student)):
     )
 
     s = student_res.data
+    classroom = s.get("classrooms") or {}
     return StudentMeResponse(
         name=s["name"],
         level=s["level"],
         streak_count=s["streak_count"] or 0,
         today_session_count=count_res.count or 0,
+        classroom_name=classroom.get("name"),
     )
 
 
