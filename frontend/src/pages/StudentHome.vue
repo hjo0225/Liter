@@ -175,7 +175,7 @@ function handleLogout() {
             <Sparkles :size="18" />
           </div>
           <div>
-            <div class="brand-font text-lg font-bold" style="color: var(--ink-900)">토도독</div>
+            <div class="brand-font text-xl font-bold" style="color: var(--ink-900)">토도독</div>
             <div class="text-xs font-medium" style="color: var(--ink-500)">{{ classroomName }}</div>
           </div>
         </div>
@@ -204,7 +204,7 @@ function handleLogout() {
               <Flame :size="14" />
               {{ streakCount }}일 연속 학습 중
             </div>
-            <h1 class="mb-3 text-3xl font-bold md:text-5xl">
+            <h1 class="mb-3 text-3xl font-bold tracking-wide md:text-5xl">
               {{ studentName }}님,
               <br />
               오늘도 읽고 생각할 준비가 됐어요.

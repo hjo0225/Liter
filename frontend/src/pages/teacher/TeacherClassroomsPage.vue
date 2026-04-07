@@ -98,7 +98,7 @@ onMounted(fetchClassrooms)
           <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
             <Sparkles :size="18" />
           </div>
-          <div class="brand-font text-lg font-bold" style="color: #10294b">토도독</div>
+          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
           <span class="px-2.5 py-1 rounded-full text-xs" style="background-color: #EBF0FC; color: #1B438A; font-weight: 600;">
             교사 대시보드
           </span>

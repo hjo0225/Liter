@@ -128,7 +128,7 @@ onUnmounted(() => {
           <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
             <Sparkles :size="18" />
           </div>
-          <div class="brand-font text-lg font-bold" style="color: #10294b">토도독</div>
+          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
         </div>
       </div>
 

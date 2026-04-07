@@ -7,7 +7,7 @@
           <div class="flex h-10 w-10 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
             <Sparkles :size="18" />
           </div>
-          <div class="brand-font text-lg font-bold" style="color: #10294b">토도독</div>
+          <div class="brand-font text-xl font-bold" style="color: #10294b">토도독</div>
         </div>
         <div class="hidden md:flex items-center gap-8">
           <a href="#features" class="text-sm cursor-pointer hover:opacity-80 transition-opacity" style="color: #5A7AB8; font-weight: 500">기능</a>
@@ -292,7 +292,7 @@
             <div class="flex h-9 w-9 items-center justify-center rounded-2xl text-white" style="background: linear-gradient(135deg, #1f5fff, #10294b)">
               <Sparkles :size="16" />
             </div>
-            <span class="brand-font text-lg font-bold" style="color: white">토도독</span>
+            <span class="brand-font text-xl font-bold" style="color: white">토도독</span>
             <span class="text-xs ml-2" style="color: #5A7AB8">AI 기반 초등 문해력 토의 플랫폼</span>
           </div>
           <div class="text-xs" style="color: #2653AC">© 2026 토도독. 초등 4~6학년 문해력 교육을 위해 만들었어요.</div>
