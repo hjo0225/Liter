@@ -28,6 +28,8 @@ class AnswerSubmitRequest(BaseModel):
 
 class AnswerSubmitResponse(BaseModel):
     ok: bool = True
+    is_correct: bool
+    correct_index: int
 
 
 class DiscussionRequest(BaseModel):

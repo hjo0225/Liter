@@ -340,7 +340,7 @@ def submit_answer(
     if len(answered_res.data) == 3:
         _maybe_diagnose(student_id, session_id, answered_res.data)
 
-    return AnswerSubmitResponse(ok=True)
+    return AnswerSubmitResponse(ok=True, is_correct=is_correct, correct_index=correct_index)
 
 
 def _maybe_diagnose(student_id: str, session_id: str, answered: list[dict]) -> None:

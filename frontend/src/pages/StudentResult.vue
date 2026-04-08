@@ -51,7 +51,7 @@ function goHome() {
 </script>
 
 <template>
-  <div class="min-h-screen" style="background: #F8FAFF;">
+  <div class="min-h-screen pb-24 md:pb-0" style="background: #F8FAFF;">
 
     <!-- Nav -->
     <nav class="border-b border-white/50 bg-white/70 backdrop-blur-xl sticky top-0 z-10">
@@ -208,6 +208,17 @@ function goHome() {
 
         </div>
       </div>
+    </div>
+
+    <!-- 모바일 하단 고정 버튼 -->
+    <div class="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3 md:hidden" style="background: #F8FAFF; border-top: 1px solid #EBF0FC;">
+      <button
+        @click="goHome"
+        class="w-full py-4 rounded-2xl text-white text-base font-bold"
+        style="background: #1B438A;"
+      >
+        다음 학습 하러 가기 →
+      </button>
     </div>
   </div>
 </template>

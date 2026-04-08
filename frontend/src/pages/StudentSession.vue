@@ -14,12 +14,16 @@ const studentStore = useStudentStore()
 const selectedChoice = ref<number | null>(null)
 const submitting = ref(false)
 const answerError = ref<string | null>(null)
+const feedbackCorrectIndex = ref<number | null>(null)
+const feedbackIsCorrect = ref<boolean | null>(null)
 
 const currentQuestion = computed(() => sessionStore.questions[sessionStore.currentQuestionIndex])
 
 watch(() => sessionStore.currentQuestionIndex, () => {
   selectedChoice.value = null
   answerError.value = null
+  feedbackCorrectIndex.value = null
+  feedbackIsCorrect.value = null
 })
 
 // ──────────────────── 헬퍼 ────────────────────
@@ -93,11 +97,17 @@ async function handleConfirm() {
   submitting.value = true
   answerError.value = null
   try {
-    await apiClient.post(`/student/sessions/${sessionStore.sessionId}/answer`, {
+    const { data } = await apiClient.post(`/student/sessions/${sessionStore.sessionId}/answer`, {
       question_index: currentQuestion.value.index,
       selected_index: selectedChoice.value,
     })
     sessionStore.recordAnswer(sessionStore.currentQuestionIndex, selectedChoice.value)
+
+    // 피드백 표시 후 다음으로 이동
+    feedbackIsCorrect.value = data.is_correct
+    feedbackCorrectIndex.value = data.correct_index
+    await new Promise(resolve => setTimeout(resolve, 900))
+
     sessionStore.nextQuestion()
     if (sessionStore.phase === 'discussion') {
       router.push('/student/discussion')
@@ -112,6 +122,19 @@ async function handleConfirm() {
 
 <template>
   <div class="min-h-screen" style="background: #F8FAFF;">
+
+    <!-- 스텝 인디케이터 -->
+    <div class="sticky top-0 z-10 border-b" style="background: #F8FAFF; border-color: #EBF0FC;">
+      <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-center gap-2 text-xs font-bold">
+        <span :style="sessionStore.phase === 'reading' ? 'color: #1B438A;' : 'color: #93B2E8;'">① 읽기</span>
+        <span style="color: #CBD5E1;">—</span>
+        <span :style="sessionStore.phase === 'mcq' ? 'color: #1B438A;' : 'color: #93B2E8;'">② 문제풀기</span>
+        <span style="color: #CBD5E1;">—</span>
+        <span style="color: #93B2E8;">③ 토의</span>
+        <span style="color: #CBD5E1;">—</span>
+        <span style="color: #93B2E8;">④ 결과</span>
+      </div>
+    </div>
 
     <!-- ════════════════ 지문 읽기 ════════════════ -->
     <template v-if="sessionStore.phase === 'reading' && sessionStore.passage">
@@ -203,18 +226,34 @@ async function handleConfirm() {
           <button
             v-for="(choice, i) in currentQuestion.choices"
             :key="i"
-            @click="selectedChoice = i"
-            class="w-full text-left px-4 py-3.5 rounded-xl border-2 flex items-center gap-3 transition-all"
-            :style="{
-              borderColor: selectedChoice === i ? '#1B438A' : '#EBF0FC',
-              background: selectedChoice === i ? '#EBF0FC' : 'white',
-            }"
+            @click="feedbackIsCorrect === null && (selectedChoice = i)"
+            :disabled="feedbackIsCorrect !== null"
+            class="w-full text-left px-4 py-3.5 rounded-xl border-2 flex items-center gap-3 transition-all duration-300"
+            :style="feedbackIsCorrect !== null
+              ? i === feedbackCorrectIndex
+                ? 'border-color: #16A34A; background: #DCFCE7;'
+                : i === selectedChoice && !feedbackIsCorrect
+                  ? 'border-color: #DC2626; background: #FEE2E2;'
+                  : 'border-color: #EBF0FC; background: white; opacity: 0.5;'
+              : selectedChoice === i
+                ? 'border-color: #1B438A; background: #EBF0FC;'
+                : 'border-color: #EBF0FC; background: white;'"
           >
-            <span class="font-black text-lg shrink-0" style="color: #1B438A; width: 24px;">
-              {{ choicePrefix[i] }}
+            <span class="font-black text-lg shrink-0" :style="{
+              color: feedbackIsCorrect !== null
+                ? i === feedbackCorrectIndex ? '#16A34A' : i === selectedChoice ? '#DC2626' : '#93B2E8'
+                : '#1B438A',
+              width: '24px'
+            }">
+              {{ feedbackIsCorrect !== null && i === feedbackCorrectIndex ? '✓' : feedbackIsCorrect !== null && i === selectedChoice ? '✗' : choicePrefix[i] }}
             </span>
-            <span class="text-sm leading-snug" style="color: #081830;">{{ choice }}</span>
+            <span class="text-base leading-snug" style="color: #081830;">{{ choice }}</span>
           </button>
+        </div>
+
+        <!-- 피드백 메시지 -->
+        <div v-if="feedbackIsCorrect !== null" class="text-center text-base font-bold py-1" :style="feedbackIsCorrect ? 'color: #16A34A;' : 'color: #DC2626;'">
+          {{ feedbackIsCorrect ? '정답이에요! 🎉' : '틀렸어요. 정답을 확인해보세요.' }}
         </div>
 
         <!-- 에러 -->
@@ -233,14 +272,14 @@ async function handleConfirm() {
           </button>
           <button
             @click="handleConfirm"
-            :disabled="selectedChoice === null || submitting"
+            :disabled="selectedChoice === null || submitting || feedbackIsCorrect !== null"
             class="flex-1 py-3.5 rounded-2xl font-bold text-white transition-all"
             :style="{
-              background: selectedChoice !== null && !submitting ? '#1B438A' : '#CBD5E1',
-              cursor: selectedChoice !== null && !submitting ? 'pointer' : 'not-allowed',
+              background: selectedChoice !== null && !submitting && feedbackIsCorrect === null ? '#1B438A' : '#CBD5E1',
+              cursor: selectedChoice !== null && !submitting && feedbackIsCorrect === null ? 'pointer' : 'not-allowed',
             }"
           >
-            {{ submitting ? '저장 중...' : '확인' }}
+            {{ submitting ? '확인 중...' : feedbackIsCorrect !== null ? '다음으로 이동 중...' : '확인' }}
           </button>
         </div>
       </div>

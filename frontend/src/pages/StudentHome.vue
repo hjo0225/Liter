@@ -190,7 +190,16 @@ function handleLogout() {
       </div>
     </nav>
 
-    <main class="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-6 md:px-6 md:py-8">
+    <!-- 로딩 스켈레톤 -->
+    <main v-if="loading" class="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-6 md:px-6 md:py-8">
+      <div class="rounded-[32px] h-48 animate-pulse" style="background: #C8D9F6;" />
+      <div class="grid grid-cols-3 gap-4">
+        <div v-for="i in 3" :key="i" class="rounded-2xl h-24 animate-pulse" style="background: #EBF0FC;" />
+      </div>
+      <div class="rounded-2xl h-32 animate-pulse" style="background: #EBF0FC;" />
+    </main>
+
+    <main v-else class="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-6 md:px-6 md:py-8">
       <section class="mesh-hero section-shell overflow-hidden rounded-[32px] px-6 py-7 text-white md:px-8 md:py-8">
         <div class="relative z-10 grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
           <div class="fade-rise">
@@ -198,7 +207,7 @@ function handleLogout() {
               <Flame :size="14" />
               {{ streakCount }}일 연속 학습 중
             </div>
-            <h1 class="mb-3 text-3xl font-bold tracking-wide md:text-5xl">
+            <h1 class="mb-3 text-2xl font-bold tracking-wide md:text-3xl">
               {{ studentName }}님,
               <br />
               오늘도 읽고 생각할 준비가 됐어요.
