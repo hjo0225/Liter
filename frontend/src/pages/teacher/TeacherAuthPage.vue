@@ -124,12 +124,7 @@ onUnmounted(() => {
           <ArrowLeft :size="16" />
           홈으로
         </button>
-        <div class="brand-badge">
-          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A;">
-            <BookOpenText :size="22" />
-          </div>
-          <div class="brand-wordmark">토도독</div>
-        </div>
+        <img src="/service_logo.png" alt="토도독" class="h-10 w-auto" />
       </div>
 
       <!-- Card -->

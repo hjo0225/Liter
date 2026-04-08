@@ -169,14 +169,9 @@ function handleLogout() {
   <div class="min-h-screen">
     <nav class="border-b border-white/50 bg-white/70 backdrop-blur-xl">
       <div class="mx-auto flex h-18 max-w-6xl items-center justify-between px-5 md:px-6">
-        <div class="brand-badge">
-          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: var(--accent-strong)">
-            <BookOpenText :size="22" />
-          </div>
-          <div>
-            <div class="brand-wordmark">토도독</div>
-            <div class="text-xs font-medium" style="color: var(--ink-500)">{{ classroomName }}</div>
-          </div>
+        <div class="flex flex-col items-start">
+          <img src="/service_logo.png" alt="토도독" class="h-10 w-auto" />
+          <div class="text-xs font-medium" style="color: var(--ink-500)">{{ classroomName }}</div>
         </div>
 
         <div class="flex items-center gap-3">

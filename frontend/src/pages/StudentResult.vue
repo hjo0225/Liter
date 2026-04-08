@@ -56,12 +56,7 @@ function goHome() {
     <!-- Nav -->
     <nav class="border-b border-white/50 bg-white/70 backdrop-blur-xl sticky top-0 z-10">
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-6">
-        <div class="brand-badge">
-          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: var(--accent-strong)">
-            <BookOpenText :size="22" />
-          </div>
-          <div class="brand-wordmark">토도독</div>
-        </div>
+        <img src="/service_logo.png" alt="토도독" class="h-10 w-auto" />
         <button
           @click="goHome"
           class="rounded-full px-4 py-2 text-sm font-semibold"

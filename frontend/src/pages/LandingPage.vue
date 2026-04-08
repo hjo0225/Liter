@@ -3,15 +3,7 @@
     <!-- Navigation -->
     <nav class="sticky top-0 z-50 border-b" style="background-color: white; border-color: #C8D9F6">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <div class="brand-badge">
-          <div
-            class="flex h-11 w-11 items-center justify-center rounded-2xl"
-            style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A"
-          >
-            <BookOpenText :size="22" />
-          </div>
-          <div class="brand-wordmark">토도독</div>
-        </div>
+        <img src="/service_logo.png" alt="토도독" class="h-12 w-auto" />
         <div class="flex items-center gap-3">
           <button
             @click="router.push('/student/join')"

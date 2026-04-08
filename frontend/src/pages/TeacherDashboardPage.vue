@@ -11,14 +11,9 @@
             <ChevronLeft :size="16" />
             학급 목록
           </button>
-          <div class="brand-badge">
-            <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: var(--accent-strong)">
-              <BookOpenText :size="22" />
-            </div>
-            <div>
-              <div class="brand-wordmark">토도독</div>
-              <div class="text-xs font-medium" style="color: var(--ink-500)">{{ dashboard?.classroom_name ?? '학급' }}</div>
-            </div>
+          <div class="flex flex-col items-start">
+            <img src="/service_logo.png" alt="토도독" class="h-10 w-auto" />
+            <div class="text-xs font-medium" style="color: var(--ink-500)">{{ dashboard?.classroom_name ?? '학급' }}</div>
           </div>
         </div>
 
