@@ -25,11 +25,14 @@ logger = logging.getLogger("uvicorn.error")
 
 @router.get("/me", response_model=StudentMeResponse)
 def get_me(student_id: str = Depends(get_current_student)):
-    today = date.today().isoformat()
+    from datetime import timedelta
+    today = date.today()
+    today_iso = today.isoformat()
+    week_ago = (today - timedelta(days=6)).isoformat()
 
     student_res = (
         supabase.table("students")
-        .select("name, level, streak_count, classroom_id")
+        .select("name, level, streak_count, weak_areas, classroom_id")
         .eq("id", student_id)
         .single()
         .execute()
@@ -37,16 +40,62 @@ def get_me(student_id: str = Depends(get_current_student)):
     if not student_res.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="STUDENT_NOT_FOUND")
 
+    s = student_res.data
+
+    # 오늘 세션 수
     count_res = (
         supabase.table("sessions")
         .select("id", count="exact")
         .eq("student_id", student_id)
-        .eq("session_date", today)
+        .eq("session_date", today_iso)
         .neq("status", "abandoned")
         .execute()
     )
 
-    s = student_res.data
+    # 최근 3세션 평균 점수
+    recent_sessions_res = (
+        supabase.table("sessions")
+        .select("score_reasoning, score_vocabulary, score_context")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .not_.is_("score_reasoning", "null")
+        .order("ended_at", desc=True)
+        .limit(3)
+        .execute()
+    )
+    recent_sessions = recent_sessions_res.data or []
+    if recent_sessions:
+        recent_average_score = round(
+            sum(
+                (r["score_reasoning"] + r["score_vocabulary"] + r["score_context"]) / 3
+                for r in recent_sessions
+            ) / len(recent_sessions),
+            1,
+        )
+    else:
+        recent_average_score = None
+
+    # 이번 주 완료 세션 수 (오늘 포함 최근 7일)
+    weekly_res = (
+        supabase.table("sessions")
+        .select("id", count="exact")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .gte("session_date", week_ago)
+        .lte("session_date", today_iso)
+        .execute()
+    )
+
+    # 누적 완료 세션 수
+    total_res = (
+        supabase.table("sessions")
+        .select("id", count="exact")
+        .eq("student_id", student_id)
+        .eq("status", "completed")
+        .execute()
+    )
+
+    # 학급명
     classroom_name = None
     if s.get("classroom_id"):
         classroom_res = (
@@ -65,6 +114,10 @@ def get_me(student_id: str = Depends(get_current_student)):
         streak_count=s["streak_count"] or 0,
         today_session_count=count_res.count or 0,
         classroom_name=classroom_name,
+        weak_areas=s.get("weak_areas") or [],
+        recent_average_score=recent_average_score,
+        weekly_completed_count=weekly_res.count or 0,
+        total_completed_count=total_res.count or 0,
     )
 
 
