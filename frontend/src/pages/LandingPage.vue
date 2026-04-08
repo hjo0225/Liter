@@ -71,7 +71,7 @@
               class="flex w-44 items-center justify-between gap-2 px-6 py-3.5 rounded-xl transition-all hover:opacity-90 active:scale-95"
               style="background-color: rgba(255,255,255,0.12); border: 1.5px solid rgba(255,255,255,0.25); color: white; font-weight: 600"
             >
-              <span>교사 대시보드</span>
+              <span>교사 로그인</span>
               <ChevronRight :size="18" />
             </button>
           </div>
