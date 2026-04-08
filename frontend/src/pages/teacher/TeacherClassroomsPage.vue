@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
-import { Plus, Copy, Check, ChevronRight, LogOut, Users } from 'lucide-vue-next'
+import { BookOpenText, Building2, Check, ChevronRight, Copy, LogOut, Plus, Users } from 'lucide-vue-next'
 import apiClient from '@/api/client'
 import { useTeacherStore } from '@/stores/teacher'
 
@@ -94,8 +94,10 @@ onMounted(fetchClassrooms)
     <nav class="sticky top-0 z-40 border-b bg-white" style="border-color: #EBF0FC;">
       <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         <!-- Logo -->
-        <button class="flex items-center gap-1" @click="router.push('/')">
-          <span class="text-2xl">📚</span>
+        <button class="flex items-center gap-3" @click="router.push('/')">
+          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A;">
+            <BookOpenText :size="22" />
+          </div>
           <div class="display-font text-2xl font-bold" style="color: #10294b">토도독</div>
           <span class="px-2.5 py-1 rounded-full text-xs" style="background-color: #EBF0FC; color: #1B438A; font-weight: 600;">
             교사 대시보드
@@ -145,14 +147,16 @@ onMounted(fetchClassrooms)
       <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
         <div
           v-for="(stat, i) in [
-            { emoji: '🏫', label: '전체 학급', value: classrooms.length },
-            { emoji: '👥', label: '전체 학생', value: totalStudents },
+            { icon: Building2, label: '전체 학급', value: classrooms.length, bg: '#EBF0FC', color: '#1B438A' },
+            { icon: Users, label: '전체 학생', value: totalStudents, bg: '#DDE8FC', color: '#163674' },
           ]"
           :key="i"
           class="rounded-2xl p-5 bg-white"
           style="border: 1px solid #EBF0FC;"
         >
-          <div class="text-2xl mb-2">{{ stat.emoji }}</div>
+          <div class="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl" :style="{ background: stat.bg, color: stat.color }">
+            <component :is="stat.icon" :size="22" />
+          </div>
           <div class="text-2xl" style="font-weight: 900; color: #1B438A;">{{ stat.value }}</div>
           <div class="text-xs mt-1" style="color: #5A7AB8;">{{ stat.label }}</div>
         </div>
@@ -165,7 +169,9 @@ onMounted(fetchClassrooms)
 
       <!-- Empty state -->
       <div v-else-if="classrooms.length === 0" class="text-center py-20">
-        <div class="text-5xl mb-4">🏫</div>
+        <div class="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-[28px]" style="background: #EBF0FC; color: #1B438A;">
+          <Building2 :size="38" />
+        </div>
         <h3 class="text-lg font-bold" style="color: #112B5C;">아직 학급이 없어요</h3>
         <p class="text-sm mt-2 mb-6" style="color: #5A7AB8;">새 학급을 만들어 학생들을 초대해보세요!</p>
         <button
@@ -190,8 +196,8 @@ onMounted(fetchClassrooms)
             <!-- Info -->
             <div class="flex-1">
               <div class="flex items-center gap-3 mb-3">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style="background-color: #EBF0FC;">
-                  🏫
+                <div class="w-10 h-10 rounded-xl flex items-center justify-center" style="background-color: #EBF0FC; color: #1B438A;">
+                  <Building2 :size="20" />
                 </div>
                 <div>
                   <h3 class="font-bold" style="color: #081830;">{{ cls.name }}</h3>
@@ -260,7 +266,9 @@ onMounted(fetchClassrooms)
               v-if="showCreate"
               class="rounded-3xl p-8 w-full max-w-md bg-white"
             >
-              <div class="text-3xl mb-4">🏫</div>
+              <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl" style="background: #EBF0FC; color: #1B438A;">
+                <Building2 :size="30" />
+              </div>
               <h2 class="text-xl mb-2" style="color: #081830; font-weight: 800;">새 학급 만들기</h2>
               <p class="text-sm mb-6" style="color: #5A7AB8;">학급을 생성하면 6자리 코드가 자동 발급돼요</p>
 

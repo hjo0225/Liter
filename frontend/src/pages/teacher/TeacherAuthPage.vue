@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Eye, EyeOff, ArrowLeft } from 'lucide-vue-next'
+import { ArrowLeft, ArrowRight, BookOpenText, Eye, EyeOff, GraduationCap, Sparkles } from 'lucide-vue-next'
 import apiClient from '@/api/client'
 import { useTeacherStore } from '@/stores/teacher'
 
@@ -124,8 +124,10 @@ onUnmounted(() => {
           <ArrowLeft :size="16" />
           홈으로
         </button>
-        <div class="flex items-center gap-1">
-          <span class="text-2xl">📚</span>
+        <div class="flex items-center gap-3">
+          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A;">
+            <BookOpenText :size="22" />
+          </div>
           <div class="display-font text-2xl font-bold" style="color: #10294b">토도독</div>
         </div>
       </div>
@@ -161,7 +163,9 @@ onUnmounted(() => {
             <!-- ── LOGIN ───────────────────────────────────────────────────── -->
             <div v-if="tab === 'login'" key="login">
               <div class="text-center mb-8">
-                <div class="text-4xl mb-3">👩‍🏫</div>
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl" style="background: #EBF0FC; color: #1B438A;">
+                  <GraduationCap :size="30" />
+                </div>
                 <h2 class="text-xl" style="color: #081830; font-weight: 800;">교사 로그인</h2>
                 <p class="text-sm mt-1" style="color: #5A7AB8;">대시보드로 이동합니다</p>
               </div>
@@ -211,20 +215,23 @@ onUnmounted(() => {
               <p v-if="error" class="mt-3 text-xs text-center" style="color: #DC2626;">{{ error }}</p>
 
               <button
-                class="w-full py-3.5 rounded-xl text-white text-sm mt-6 transition-all"
+                class="flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm mt-6 transition-all"
                 :style="loading ? 'background-color: #C0D0F6; opacity: 0.7;' : 'background-color: #1B438A;'"
                 :disabled="loading"
                 style="font-weight: 700;"
                 @click="handleLogin"
               >
-                {{ loading ? '로그인 중...' : '로그인 →' }}
+                <span>{{ loading ? '로그인 중...' : '로그인' }}</span>
+                <ArrowRight v-if="!loading" :size="16" />
               </button>
             </div>
 
             <!-- ── SIGNUP ───────────────────────────────────────────────────── -->
             <div v-else-if="tab === 'signup'" key="signup">
               <div class="text-center mb-8">
-                <div class="text-4xl mb-3">✨</div>
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl" style="background: #EBF0FC; color: #1B438A;">
+                  <Sparkles :size="30" />
+                </div>
                 <h2 class="text-xl" style="color: #081830; font-weight: 800;">교사 회원가입</h2>
                 <p class="text-sm mt-1" style="color: #5A7AB8;">가입 즉시 바로 시작할 수 있어요</p>
               </div>
@@ -283,7 +290,7 @@ onUnmounted(() => {
               <p v-if="error" class="mt-3 text-xs text-center" style="color: #DC2626;">{{ error }}</p>
 
               <button
-                class="w-full py-3.5 rounded-xl text-white text-sm mt-6 transition-all"
+                class="flex w-full items-center justify-center gap-2 py-3.5 rounded-xl text-white text-sm mt-6 transition-all"
                 :style="signupEmail && signupPw && signupName && !loading
                   ? 'background-color: #1B438A;'
                   : 'background-color: #C0D0F6; cursor: not-allowed;'"
@@ -291,7 +298,8 @@ onUnmounted(() => {
                 style="font-weight: 700;"
                 @click="handleSignup"
               >
-                {{ loading ? '처리 중...' : '회원가입 →' }}
+                <span>{{ loading ? '처리 중...' : '회원가입' }}</span>
+                <ArrowRight v-if="!loading" :size="16" />
               </button>
             </div>
 

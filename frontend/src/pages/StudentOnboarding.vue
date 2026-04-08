@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { ArrowRight, Backpack, BookOpenText } from 'lucide-vue-next'
 import { useStudentStore } from '@/stores/student'
 import apiClient from '@/api/client'
 
@@ -50,15 +51,19 @@ async function handleJoin() {
 <template>
   <div class="min-h-screen flex flex-col items-center justify-center px-4" style="background: #F8FAFF;">
     <!-- 로고 -->
-    <div class="mb-8 flex items-center gap-1">
-      <span class="text-2xl">📚</span>
+    <div class="mb-8 flex items-center gap-3">
+      <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A;">
+        <BookOpenText :size="22" />
+      </div>
       <div class="display-font text-2xl font-bold" style="color: var(--ink-900)">토도독</div>
     </div>
 
     <!-- 카드 -->
     <div class="w-full max-w-sm rounded-2xl p-8 shadow-sm" style="background: white; border: 1px solid #EBF0FC;">
       <div class="text-center mb-6">
-        <div class="text-4xl mb-3">🎒</div>
+        <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl" style="background: #EBF0FC; color: #1B438A;">
+          <Backpack :size="30" />
+        </div>
         <h1 class="font-black text-2xl mb-1" style="color: #081830;">학생 로그인</h1>
         <p class="text-sm" style="color: #5A7AB8;">선생님이 알려준 코드와 이름을 입력하세요</p>
       </div>
@@ -105,13 +110,14 @@ async function handleJoin() {
         <button
           type="submit"
           :disabled="!canSubmit || loading"
-          class="w-full py-3.5 rounded-xl font-bold text-white transition-all mt-1"
+          class="flex w-full items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-white transition-all mt-1"
           :style="{
             background: canSubmit && !loading ? '#1B438A' : '#CBD5E1',
             cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
           }"
         >
-          {{ loading ? '확인 중...' : '로그인 →' }}
+          <span>{{ loading ? '확인 중...' : '로그인' }}</span>
+          <ArrowRight v-if="!loading" :size="16" />
         </button>
       </form>
     </div>
