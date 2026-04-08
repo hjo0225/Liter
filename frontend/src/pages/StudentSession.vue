@@ -208,14 +208,6 @@ async function handleConfirm() {
           </div>
         </div>
 
-        <!-- 지문 미리보기 -->
-        <div
-          class="rounded-xl p-4 max-h-40 overflow-y-auto text-sm leading-relaxed"
-          style="background: #EBF0FC; color: #081830;"
-        >
-          {{ sessionStore.passage?.content }}
-        </div>
-
         <!-- 질문 -->
         <p class="font-bold text-base leading-snug" style="color: #081830;">
           {{ currentQuestion.text }}
