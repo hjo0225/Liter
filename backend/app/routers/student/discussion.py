@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
-from app.agents.discussion_agent import call_moderator, call_peer_a, call_peer_b
+from app.agents.discussion_agent import call_moderator, call_moderator_close, call_peer_a, call_peer_b
 from app.core.constants import MAX_DISCUSSION_TOPICS
 from app.core.deps import get_current_student
 from app.core.supabase import supabase
@@ -122,8 +122,17 @@ async def discussion(
                     "role": "user",
                 })
 
-            # 3가지 주제 모두 토의 완료 시 종료
+            # 3가지 주제 모두 토의 완료 시 → 모더레이터 마무리 후 종료
             if current_topic > MAX_DISCUSSION_TOPICS:
+                close_content = await asyncio.to_thread(call_moderator_close, context, existing_messages)
+                yield _sse_event({"speaker": "moderator", "content": close_content, "round": MAX_DISCUSSION_TOPICS})
+                supabase.table("messages").insert({
+                    "session_id": session_id,
+                    "role": "assistant",
+                    "speaker": "moderator",
+                    "content": close_content,
+                    "round": MAX_DISCUSSION_TOPICS,
+                }).execute()
                 yield _sse_event({"is_final": True})
                 return
 
@@ -133,46 +142,31 @@ async def discussion(
 
             ai_messages_to_save = []
 
-            if current_topic == 1:
-                # 주제 1: 모더레이터가 첫 번째 주제 소개 → 또래A 의견
-                mod_content = await asyncio.to_thread(call_moderator, context, existing_messages, current_topic)
-                if await request.is_disconnected():
-                    logger.info("Client disconnected after moderator call, session_id=%s", session_id)
-                    return
-                yield _sse_event({"speaker": "moderator", "content": mod_content, "round": current_topic})
-                ai_messages_to_save.append(("moderator", mod_content))
+            # 모든 주제 공통 흐름: 모더레이터 → 또래A(민지) → 또래B(준서) → [지수 차례]
+            mod_content = await asyncio.to_thread(call_moderator, context, existing_messages, current_topic)
+            if await request.is_disconnected():
+                logger.info("Client disconnected after moderator call, session_id=%s", session_id)
+                return
+            yield _sse_event({"speaker": "moderator", "content": mod_content, "round": current_topic})
+            ai_messages_to_save.append(("moderator", mod_content))
 
-                peer_a_content = await asyncio.to_thread(
-                    call_peer_a,
-                    context,
-                    existing_messages + [{"speaker": "moderator", "content": mod_content, "round": current_topic}],
-                    current_topic,
-                )
-                if await request.is_disconnected():
-                    logger.info("Client disconnected after peer_a call, session_id=%s", session_id)
-                    return
-                yield _sse_event({"speaker": "peer_a", "content": peer_a_content, "round": current_topic})
-                ai_messages_to_save.append(("peer_a", peer_a_content))
-            else:
-                # 주제 2~3: 또래B 반응 → 모더레이터가 다음 주제로 전환 또는 마무리
-                peer_b_content = await asyncio.to_thread(call_peer_b, context, existing_messages, current_topic)
-                if await request.is_disconnected():
-                    logger.info("Client disconnected after peer_b call, session_id=%s", session_id)
-                    return
-                yield _sse_event({"speaker": "peer_b", "content": peer_b_content, "round": current_topic})
-                ai_messages_to_save.append(("peer_b", peer_b_content))
+            messages_so_far = existing_messages + [{"speaker": "moderator", "content": mod_content, "round": current_topic}]
 
-                mod_content = await asyncio.to_thread(
-                    call_moderator,
-                    context,
-                    existing_messages + [{"speaker": "peer_b", "content": peer_b_content, "round": current_topic}],
-                    current_topic,
-                )
-                if await request.is_disconnected():
-                    logger.info("Client disconnected after moderator call, session_id=%s", session_id)
-                    return
-                yield _sse_event({"speaker": "moderator", "content": mod_content, "round": current_topic})
-                ai_messages_to_save.append(("moderator", mod_content))
+            peer_a_content = await asyncio.to_thread(call_peer_a, context, messages_so_far, current_topic)
+            if await request.is_disconnected():
+                logger.info("Client disconnected after peer_a call, session_id=%s", session_id)
+                return
+            yield _sse_event({"speaker": "peer_a", "content": peer_a_content, "round": current_topic})
+            ai_messages_to_save.append(("peer_a", peer_a_content))
+
+            messages_so_far = messages_so_far + [{"speaker": "peer_a", "content": peer_a_content, "round": current_topic}]
+
+            peer_b_content = await asyncio.to_thread(call_peer_b, context, messages_so_far, current_topic)
+            if await request.is_disconnected():
+                logger.info("Client disconnected after peer_b call, session_id=%s", session_id)
+                return
+            yield _sse_event({"speaker": "peer_b", "content": peer_b_content, "round": current_topic})
+            ai_messages_to_save.append(("peer_b", peer_b_content))
 
             # AI 메시지 DB 저장
             for speaker, content in ai_messages_to_save:
@@ -184,10 +178,7 @@ async def discussion(
                     "round": current_topic,
                 }).execute()
 
-            if current_topic >= MAX_DISCUSSION_TOPICS:
-                yield _sse_event({"is_final": True})
-            else:
-                yield _sse_event({"next_speaker": "user", "round": current_topic, "is_final": False})
+            yield _sse_event({"next_speaker": "user", "round": current_topic, "is_final": False})
         except Exception:
             logger.exception("Discussion stream failed for session_id=%s topic=%s", session_id, current_topic)
             yield _sse_event({"error": "DISCUSSION_FAILED", "is_final": False})

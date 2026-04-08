@@ -101,7 +101,7 @@ async function callDiscussion(userContent: string) {
 
         if (event.speaker) {
           currentSpeaker.value = event.speaker as Speaker
-          await new Promise<void>(res => setTimeout(res, 400 + Math.random() * 300))
+          await new Promise<void>(res => setTimeout(res, 1500 + Math.random() * 1000))
           messages.value.push({
             id: nextId(),
             speaker: event.speaker as Speaker,
