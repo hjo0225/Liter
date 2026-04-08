@@ -1,8 +1,8 @@
 # 하루 세션 제한
 DAILY_SESSION_LIMIT = 3
 
-# 토의 최대 라운드
-MAX_DISCUSSION_ROUNDS = 10
+# 토의 주제 수 (모더레이터가 선정한 주제 3가지를 모두 토의하면 종료)
+MAX_DISCUSSION_TOPICS = 3
 
 # 레벨 조정 임계값 (최근 N 세션 평균 점수 기준)
 LEVEL_UP_THRESHOLD = 8.0

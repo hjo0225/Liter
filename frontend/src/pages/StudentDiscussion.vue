@@ -10,7 +10,7 @@ import DiscussionMessageList from '@/components/discussion/DiscussionMessageList
 import DiscussionInput from '@/components/discussion/DiscussionInput.vue'
 import { type DisplayMessage, type Speaker, SPEAKERS } from '@/components/discussion/types'
 
-const MAX_ROUNDS = 10
+const MAX_TOPICS = 3
 
 const router = useRouter()
 const sessionStore = useSessionStore()
@@ -187,7 +187,7 @@ async function endSession() {
     <DiscussionHeader
       :title="sessionStore.passage?.title ?? 'AI 그룹 토의'"
       :round="round"
-      :max-rounds="MAX_ROUNDS"
+      :max-rounds="MAX_TOPICS"
     />
 
     <!-- 참여자 타일 그리드 -->

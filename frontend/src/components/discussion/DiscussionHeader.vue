@@ -24,7 +24,7 @@ defineProps<{
         class="text-xs px-3 py-1 rounded-full font-bold"
         style="background: #1e3a6e; color: #60a5fa;"
       >
-        {{ round }} / {{ maxRounds }}라운드
+        주제 {{ round }} / {{ maxRounds }}
       </span>
     </div>
   </div>
