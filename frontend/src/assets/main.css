@@ -55,6 +55,46 @@ h3,
   letter-spacing: 0.01em;
 }
 
+.brand-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0.7rem 0.35rem 0.38rem;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(232, 240, 251, 0.95), rgba(212, 225, 252, 0.88));
+  border: 1px solid rgba(141, 169, 204, 0.24);
+  box-shadow: 0 10px 24px rgba(15, 31, 56, 0.08);
+}
+
+.brand-badge--dark {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.brand-wordmark {
+  font-family: "Jua", "SUIT", sans-serif;
+  font-weight: 400;
+  font-size: 1.65rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, #1f5fff 0%, #10294b 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 8px 20px rgba(31, 95, 255, 0.14);
+  transform: rotate(-2deg) translateY(-1px);
+  transform-origin: center;
+}
+
+.brand-wordmark--light {
+  background: linear-gradient(180deg, #ffffff 0%, #dbe7ff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 10px 22px rgba(4, 17, 43, 0.28);
+}
+
 .glass-panel {
   background: var(--surface);
   border: 1px solid rgba(199, 216, 236, 0.9);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { BookOpenText } from 'lucide-vue-next'
 import { useSessionStore } from '@/stores/session'
 import { useStudentStore } from '@/stores/student'
 
@@ -55,9 +56,11 @@ function goHome() {
     <!-- Nav -->
     <nav class="border-b border-white/50 bg-white/70 backdrop-blur-xl sticky top-0 z-10">
       <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-6">
-        <div class="flex items-center gap-1">
-          <span class="text-2xl">📚</span>
-          <div class="display-font text-2xl font-bold" style="color: var(--ink-900)">토도독</div>
+        <div class="brand-badge">
+          <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: var(--accent-strong)">
+            <BookOpenText :size="22" />
+          </div>
+          <div class="brand-wordmark">토도독</div>
         </div>
         <button
           @click="goHome"

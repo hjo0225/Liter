@@ -51,11 +51,11 @@ async function handleJoin() {
 <template>
   <div class="min-h-screen flex flex-col items-center justify-center px-4" style="background: #F8FAFF;">
     <!-- 로고 -->
-    <div class="mb-8 flex items-center gap-3">
+    <div class="brand-badge mb-8">
       <div class="flex h-11 w-11 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A;">
         <BookOpenText :size="22" />
       </div>
-      <div class="display-font text-2xl font-bold" style="color: var(--ink-900)">토도독</div>
+      <div class="brand-wordmark">토도독</div>
     </div>
 
     <!-- 카드 -->

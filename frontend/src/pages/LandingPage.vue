@@ -3,14 +3,14 @@
     <!-- Navigation -->
     <nav class="sticky top-0 z-50 border-b" style="background-color: white; border-color: #C8D9F6">
       <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-        <div class="flex items-center gap-3">
+        <div class="brand-badge">
           <div
             class="flex h-11 w-11 items-center justify-center rounded-2xl"
             style="background: linear-gradient(135deg, #EBF0FC, #D4E1FC); color: #1B438A"
           >
             <BookOpenText :size="22" />
           </div>
-          <div class="display-font text-2xl font-bold" style="color: #10294b">토도독</div>
+          <div class="brand-wordmark">토도독</div>
         </div>
         <div class="flex items-center gap-3">
           <button
@@ -286,11 +286,11 @@
     <footer class="py-10 border-t" style="background-color: #04112B; border-color: #0C2044">
       <div class="max-w-6xl mx-auto px-6">
         <div class="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
+          <div class="brand-badge brand-badge--dark">
             <div class="flex h-10 w-10 items-center justify-center rounded-2xl" style="background: rgba(255,255,255,0.08); color: white">
               <BookOpenText :size="20" />
             </div>
-            <span class="display-font text-2xl font-bold" style="color: white">토도독</span>
+            <span class="brand-wordmark brand-wordmark--light">토도독</span>
             <span class="text-xs ml-2" style="color: #5A7AB8">AI 기반 초등 문해력 토의 플랫폼</span>
           </div>
           <div class="text-xs" style="color: #2653AC">© 2026 토도독. 초등 4~6학년 문해력 교육을 위해 만들었어요.</div>
