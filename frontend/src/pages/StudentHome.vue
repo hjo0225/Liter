@@ -207,7 +207,7 @@ function handleLogout() {
               <Flame :size="14" />
               {{ streakCount }}일 연속 학습 중
             </div>
-            <h1 class="mb-3 text-2xl font-bold tracking-wide md:text-3xl">
+            <h1 class="mb-3 text-xl font-bold tracking-wide md:text-2xl">
               {{ studentName }}님,
               <br />
               오늘도 읽고 생각할 준비가 됐어요.

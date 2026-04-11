@@ -37,7 +37,7 @@
               <ShieldAlert :size="14" />
               즉시 확인 필요 {{ dashboard.summary.attention_count }}명
             </div>
-            <h1 class="text-3xl font-bold md:text-5xl">
+            <h1 class="text-2xl font-bold md:text-3xl">
               {{ dashboard.classroom_name }}
               <br />
               오늘의 학습 신호를 한눈에 확인하세요.
