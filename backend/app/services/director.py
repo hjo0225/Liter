@@ -136,7 +136,7 @@ _REDIRECT_TO: dict[str, ValidSpeaker] = {
 
 def apply_guards(decision: DirectorDecision, inp: DirectorInput) -> DirectorDecision:
     """
-    가드 룰을 순서대로 적용. 우선순위: 첫 발화 > round 초과 > 연속 발화 > user 직후 wait.
+    가드 룰을 순서대로 적용. 우선순위: 첫 발화 > round 초과 > 연속 발화 > AI 3명 완료 → 학생 강제 > user 직후 wait.
 
     반환: 가드가 적용된(또는 원본) DirectorDecision.
     """
@@ -171,7 +171,22 @@ def apply_guards(decision: DirectorDecision, inp: DirectorInput) -> DirectorDeci
             }
         )
 
-    # Guard 3: 학생 발언 직후 wait_for_user 금지
+    # Guard 3: 라운드 내 AI 3명(moderator, peer_a, peer_b) 발화 완료 → 학생 차례 강제
+    if (
+        inp.round_turn_index >= 3
+        and decision.next_speaker not in ("wait_for_user", "close")
+        and inp.last_speaker != "user"
+    ):
+        logger.debug("[guard] round_turn_index=%d → force wait_for_user", inp.round_turn_index)
+        return decision.model_copy(
+            update={
+                "next_speaker": "wait_for_user",
+                "intent": "ask_user",
+                "reason": f"[guard] all AI speakers done (turn_index={inp.round_turn_index}) → student turn",
+            }
+        )
+
+    # Guard 4: 학생 발언 직후 wait_for_user 금지
     if inp.last_speaker == "user" and decision.next_speaker == "wait_for_user":
         decision = decision.model_copy(
             update={

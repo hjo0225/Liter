@@ -217,7 +217,7 @@ async def stream_agent_turn(
     is_first_turn = not state.history
     round_num = state.round
     speakers_this_round = {t.speaker for t in state.history if t.round == round_num}
-    student_has_spoken = any(t.speaker == "user" for t in state.history)
+    student_has_spoken = any(t.speaker == "user" and t.round == round_num for t in state.history)
 
     if is_first_turn and speaker == "moderator":
         # 세션 첫 발화: 항상 moderator가 주제 소개 (apply_guards 보장)
