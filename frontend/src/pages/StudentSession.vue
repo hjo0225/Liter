@@ -123,31 +123,55 @@ async function handleConfirm() {
 <template>
   <div class="min-h-screen" style="background: #F9FAFB;">
 
-    <!-- 스텝 인디케이터 -->
-    <div class="sticky top-0 z-10 border-b" style="background: #fff; border-color: #E5E8EB;">
-      <div class="max-w-lg mx-auto px-4 py-3 flex items-center justify-center gap-2 text-xs font-bold">
-        <span :style="sessionStore.phase === 'reading' ? 'color: #3182F6;' : 'color: #8B95A1;'">① 읽기</span>
-        <span style="color: #E5E8EB;">—</span>
-        <span :style="sessionStore.phase === 'mcq' ? 'color: #3182F6;' : 'color: #8B95A1;'">② 문제풀기</span>
-        <span style="color: #E5E8EB;">—</span>
-        <span style="color: #8B95A1;">③ 토의</span>
-        <span style="color: #E5E8EB;">—</span>
-        <span style="color: #8B95A1;">④ 결과</span>
+    <!-- 포커스 헤더 -->
+    <nav class="sticky top-0 z-10 border-b" style="background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-color: #E5E8EB;">
+      <div class="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+        <!-- 로고 -->
+        <img src="/service_logo.png" alt="토도독" class="h-10 w-auto flex-shrink-0" />
+
+        <!-- 스텝 인디케이터 -->
+        <div class="flex items-center gap-1.5 text-xs font-bold">
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-2 h-2 rounded-full flex-shrink-0"
+              :style="sessionStore.phase === 'reading' ? 'background: #3182F6;' : 'background: #00C471;'"
+            />
+            <span :style="sessionStore.phase === 'reading' ? 'color: #3182F6;' : 'color: #00C471;'">읽기</span>
+          </div>
+          <span style="color: #E5E8EB;">—</span>
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-2 h-2 rounded-full flex-shrink-0"
+              :style="sessionStore.phase === 'mcq' ? 'background: #3182F6;' : 'background: #E5E8EB;'"
+            />
+            <span :style="sessionStore.phase === 'mcq' ? 'color: #3182F6;' : 'color: #8B95A1;'">문제</span>
+          </div>
+          <span style="color: #E5E8EB;">—</span>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #E5E8EB;" />
+            <span style="color: #8B95A1;">토의</span>
+          </div>
+          <span style="color: #E5E8EB;">—</span>
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #E5E8EB;" />
+            <span style="color: #8B95A1;">결과</span>
+          </div>
+        </div>
+
+        <!-- 나가기 버튼 -->
+        <button
+          @click="handleExitSession"
+          class="flex-shrink-0 text-sm font-semibold px-3 py-1.5 rounded-full transition-colors"
+          style="color: #8B95A1; background: #F2F4F6;"
+        >
+          나가기 ✕
+        </button>
       </div>
-    </div>
+    </nav>
 
     <!-- ════════════════ 지문 읽기 ════════════════ -->
     <template v-if="sessionStore.phase === 'reading' && sessionStore.passage">
       <div class="max-w-lg mx-auto px-4 pt-6 pb-32 flex flex-col gap-4">
-        <!-- 홈 버튼 -->
-        <button
-          @click="handleExitSession"
-          class="self-start flex items-center gap-1 text-sm font-medium"
-          style="color: #8B95A1;"
-        >
-          ← 홈으로
-        </button>
-
         <!-- 메타 chip: 장르 + 난이도 -->
         <div class="flex items-center gap-2">
           <span

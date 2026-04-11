@@ -7,32 +7,50 @@ defineProps<{
 </script>
 
 <template>
-  <div
-    class="flex-shrink-0"
-    style="background: #fff; border-bottom: 1px solid #E5E8EB;"
+  <nav
+    class="flex-shrink-0 border-b"
+    style="background: rgba(255,255,255,0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-color: #E5E8EB;"
   >
-    <!-- 스텝 인디케이터 -->
-    <div class="flex items-center justify-center gap-2 px-4 py-2 text-xs font-bold" style="border-bottom: 1px solid #E5E8EB;">
-      <span style="color: #8B95A1;">① 읽기</span>
-      <span style="color: #E5E8EB;">—</span>
-      <span style="color: #8B95A1;">② 문제풀기</span>
-      <span style="color: #E5E8EB;">—</span>
-      <span style="color: #3182F6;">③ 토의</span>
-      <span style="color: #E5E8EB;">—</span>
-      <span style="color: #8B95A1;">④ 결과</span>
-    </div>
-    <!-- 제목 + 라운드 -->
-    <div class="flex items-center justify-between px-4 py-2.5">
-      <div class="flex items-center gap-2 min-w-0">
-        <div class="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style="background: #00C471;" />
-        <span class="text-sm font-semibold truncate" style="color: #191F28;">{{ title }}</span>
+    <!-- 메인 헤더 행 -->
+    <div class="px-4 h-16 flex items-center justify-between gap-3">
+      <!-- 로고 -->
+      <img src="/service_logo.png" alt="토도독" class="h-10 w-auto flex-shrink-0" />
+
+      <!-- 스텝 인디케이터 -->
+      <div class="flex items-center gap-1.5 text-xs font-bold">
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #00C471;" />
+          <span style="color: #00C471;">읽기</span>
+        </div>
+        <span style="color: #E5E8EB;">—</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #00C471;" />
+          <span style="color: #00C471;">문제</span>
+        </div>
+        <span style="color: #E5E8EB;">—</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style="background: #3182F6;" />
+          <span style="color: #3182F6;">토의</span>
+        </div>
+        <span style="color: #E5E8EB;">—</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #E5E8EB;" />
+          <span style="color: #8B95A1;">결과</span>
+        </div>
       </div>
+
+      <!-- 라운드 chip -->
       <span
-        class="text-xs px-3 py-1 rounded-full font-bold flex-shrink-0 ml-3"
+        class="text-xs px-3 py-1.5 rounded-full font-bold flex-shrink-0"
         style="background: #FFF4E5; color: #FF9500;"
       >
-        라운드 {{ round }} / {{ maxRounds }}
+        {{ round }} / {{ maxRounds }}
       </span>
     </div>
-  </div>
+
+    <!-- 토론 주제 서브행 -->
+    <div class="px-4 pb-2.5 flex items-center gap-2">
+      <span class="text-xs font-semibold truncate" style="color: #4E5968;">💬 {{ title }}</span>
+    </div>
+  </nav>
 </template>
