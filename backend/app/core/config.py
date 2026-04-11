@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     JWT_SECRET: str
     OPENAI_API_KEY: str
+    ANTHROPIC_API_KEY: str = ""
     APP_ENV: str = "dev"
 
     # LLM 모델 분리
