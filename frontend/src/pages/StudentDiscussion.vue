@@ -28,6 +28,7 @@ const messageListRef = ref<InstanceType<typeof DiscussionMessageList> | null>(nu
 
 let msgIdCounter = 0
 const nextId = () => ++msgIdCounter
+let pendingMsgId: number | null = null
 
 const studentName = computed(() => studentStore.student?.name ?? '나')
 
@@ -101,9 +102,39 @@ async function callDiscussion(userContent: string) {
         let event: Record<string, unknown>
         try { event = JSON.parse(raw) } catch { continue }
 
-        if (event.speaker) {
+        if (event.event === 'turn_start') {
+          // 스트리밍 시작 — 빈 메시지 버블 생성
           currentSpeaker.value = event.speaker as Speaker
-          await new Promise<void>(res => setTimeout(res, 1500 + Math.random() * 1000))
+          const id = nextId()
+          pendingMsgId = id
+          messages.value.push({
+            id,
+            speaker: event.speaker as Speaker,
+            content: '',
+            round: event.round as number,
+          })
+          round.value = event.round as number
+          await messageListRef.value?.scrollToBottom()
+        } else if (event.event === 'token') {
+          // 토큰 단위로 메시지 내용 추가
+          if (pendingMsgId !== null) {
+            const msg = messages.value.find(m => m.id === pendingMsgId)
+            if (msg) {
+              msg.content += event.text as string
+              await messageListRef.value?.scrollToBottom()
+            }
+          }
+        } else if (event.event === 'turn_end') {
+          // 스트리밍 완료 — 최종 텍스트로 확정 (토큰 누적과 동일하지만 보정)
+          if (pendingMsgId !== null) {
+            const msg = messages.value.find(m => m.id === pendingMsgId)
+            if (msg && event.full_text) msg.content = event.full_text as string
+            pendingMsgId = null
+          }
+          await messageListRef.value?.scrollToBottom()
+        } else if (event.speaker && event.content) {
+          // close 발화: 구형 단일 이벤트 형식 (moderator_close)
+          currentSpeaker.value = event.speaker as Speaker
           messages.value.push({
             id: nextId(),
             speaker: event.speaker as Speaker,

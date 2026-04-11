@@ -36,6 +36,10 @@ def _load_prompt(name: str, **kwargs: str) -> str:
     return raw
 
 
+# Public alias — discussion.py 등 외부에서 import 가능
+load_prompt = _load_prompt
+
+
 # ────────────────────────────────────────────────────────────────
 # 컨텍스트 빌더
 # ────────────────────────────────────────────────────────────────
@@ -77,18 +81,180 @@ def _last_message_by(messages: list[dict], speaker: str) -> str | None:
 
 
 # ────────────────────────────────────────────────────────────────
+# Few-shot 예시 (캐릭터별 5쌍 — gpt-4o-mini는 few-shot에 특히 잘 반응)
+# ────────────────────────────────────────────────────────────────
+
+def _few_shots_moderator(student_name: str) -> list[dict]:
+    """모더레이터 few-shot 5쌍 (user/assistant 페어)."""
+    return [
+        # 1. 주제 1 오프닝 — 민지에게 첫 질문
+        {"role": "user", "content": (
+            "[주제 1/3 시작 | 대화 없음 | 지문: 운석은 태양계 형성 당시 생긴 조각, 과학자들이 연구 중]\n"
+            "지시: 첫 번째 주제를 소개하고 민지에게 먼저 의견을 물으세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "오늘 지문에서 운석을 연구하면 태양계의 비밀을 알 수 있다고 했는데요, '
+            f'이게 왜 중요한지 함께 이야기해볼까요? 민지는 어떻게 생각하나요?"}}'
+        )},
+        # 2. 주제 1 — 민지·준서 발언 후 학생 차례
+        {"role": "user", "content": (
+            f"[주제 1/3 | 민지: '태양계 형성 과정을 알 수 있어요' | 준서: '잘 모르겠어요' | {student_name} 차례]\n"
+            f"지시: 두 친구 의견을 언급하며 {student_name}에게 물으세요."
+        )},
+        {"role": "assistant", "content": (
+            f'{{"content": "민지는 태양계가 만들어진 과정을 알 수 있다고 했고, 준서는 아직 잘 모르겠다고 했네요. '
+            f'{student_name}는 두 친구 중 어느 쪽 생각이 더 와닿나요?"}}'
+        )},
+        # 3. 주제 2로 전환 — 학생 발언 후 민지에게
+        {"role": "user", "content": (
+            f"[주제 2/3 시작 | {student_name} 발언 후]\n"
+            "지시: 자연스럽게 두 번째 주제로 넘어가며 민지에게 물으세요."
+        )},
+        {"role": "assistant", "content": (
+            f'{{"content": "{student_name}가 좋은 생각을 나눠줬어요! 그럼 이번엔 조금 더 깊이 들어가서, '
+            "글에서 '유성'과 '운석'이라는 단어가 어떻게 다르게 쓰였는지 이야기해볼까요? 민지는 어떻게 읽었나요?\"}}"
+        )},
+        # 4. 주제 2 심화 — 의견 차이 활용
+        {"role": "user", "content": (
+            "[주제 2/3 | 민지: '생명체 흔적이 중요해요' | 준서: '그냥 돌이랑 다를 게 없어요']\n"
+            f"지시: 의견 차이를 언급하며 {student_name}에게 심화 질문을 하세요."
+        )},
+        {"role": "assistant", "content": (
+            f'{{"content": "민지는 생명체 흔적이 중요하다고 했고, 준서는 그냥 돌과 다를 게 없는 것 같다고 했네요. '
+            f'{student_name}는 어느 쪽이 더 설득력 있다고 느끼나요?"}}'
+        )},
+        # 5. 주제 3 — 마지막 주제 소개
+        {"role": "user", "content": (
+            "[주제 3/3 시작 | 마지막 주제]\n"
+            "지시: 마지막 주제임을 자연스럽게 알리고 민지에게 먼저 물으세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "오늘의 마지막 주제예요! 지금까지 운석의 과학적 의미에 대해 이야기했는데, '
+            "이런 우주 연구가 우리 일상생활과 어떤 관계가 있을지 생각해볼까요? 민지는 어떻게 생각해요?\"}}"
+        )},
+    ]
+
+
+def _few_shots_peer_a(student_name: str) -> list[dict]:
+    """민지 few-shot 5쌍."""
+    return [
+        # 1. 선생님 첫 질문 — 근거 있는 답변
+        {"role": "user", "content": (
+            '[선생님: "운석 연구가 왜 중요한지 이야기해볼까요? 민지는 어떻게 생각하나요?"]\n'
+            "지시: 지문 근거를 들어 자신 있게 의견을 제시하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "네, 선생님. 저는 운석으로 태양계가 어떻게 만들어졌는지 알 수 있다는 게 가장 중요하다고 생각해요. '
+            "글에서 '약 46억 년 전 태양계가 만들어질 때 함께 생긴 조각'이라고 했거든요.\"}"
+        )},
+        # 2. 준서 부분 동의+질문 → 근거 보강
+        {"role": "user", "content": (
+            '[준서: "맞는 것 같긴 한데, 민지야. 그 46억 년이 진짜라는 건 어떻게 알아?"]\n'
+            "지시: 준서의 질문에 직접 반응하며 근거를 보강하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "준서야, 그건 과학자들이 운석 성분을 분석해서 알아내는 거야. '
+            "글에서 '과학자들은 운석을 연구해서 지구와 태양계가 어떻게 만들어졌는지 알아내고 있다'고 했잖아.\"}"
+        )},
+        # 3. 준서 반론 → 맞대응
+        {"role": "user", "content": (
+            '[준서: "민지야, 나는 좀 달라. 그냥 돌멩이랑 뭐가 달라?"]\n'
+            "지시: 준서의 반론에 반박하며 지문 근거를 제시하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "아, 준서야 나는 완전 달라! 이게 46억 년 전 태양계 조각이잖아. '
+            "게다가 글에서 '생명체와 관련된 물질이 들어있기도 하다'고 했거든. 그냥 돌이랑은 비교도 안 되지.\"}"
+        )},
+        # 4. 학생 짧은 답 → 비판적 사고 유발
+        {"role": "user", "content": (
+            f'[{student_name}(학생): "음… 저는 잘 모르겠어요."]\n'
+            "지시: 학생 발언에 반응하며 비판적 사고를 유발하는 의견을 제시하세요."
+        )},
+        {"role": "assistant", "content": (
+            f'{{"content": "{student_name}야, 나는 생명체 흔적 부분이 제일 중요한 것 같아! '
+            "만약 그게 사실이면 우주에 우리만 있는 게 아닐 수도 있잖아. 그게 엄청난 발견 아니야?\"}"
+        )},
+        # 5. 주제 3 — 지문·실생활 연결
+        {"role": "user", "content": (
+            '[선생님: "이런 우주 연구가 우리 일상과 어떤 관계가 있을지 민지는 어떻게 생각해요?"]\n'
+            "지시: 지문과 실생활을 연결하는 의견을 제시하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "네, 선생님. 저는 운석 연구 덕분에 지구가 어떻게 만들어졌는지 알면 '
+            "미래 우주 탐험 때 어디를 탐색해야 할지 알 수 있을 것 같아요. 글에서 생명체 흔적이 발견될 수 있다고 했으니까요.\"}"
+        )},
+    ]
+
+
+def _few_shots_peer_b(student_name: str) -> list[dict]:
+    """준서 few-shot 5쌍."""
+    return [
+        # 1. 민지 자신감 발언 → 부분 동의+질문
+        {"role": "user", "content": (
+            '[민지: "운석이 46억 년 된 태양계 조각이라는 게 중요해. 글에서 직접 나왔잖아."]\n'
+            "지시: 민지 발언에 반응하며 궁금증을 질문하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "맞는 것 같긴 한데, 민지야. 그 46억 년이 진짜라는 건 어떻게 아는 거야?"}'
+        )},
+        # 2. 민지 주장 → 반론
+        {"role": "user", "content": (
+            '[민지: "운석에서 생명체 흔적이 나오면 우주에 우리만 있는 게 아니라는 증거잖아!"]\n'
+            "지시: 민지의 주장에 반론을 제시하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "민지야, 나는 좀 달라. 흔적이 있다고 진짜 생명체가 있다는 건 아니잖아. 글에서도 그냥 \'관련된 물질\'이라고만 했거든."}'
+        )},
+        # 3. 학생 설명 → 연쇄 질문
+        {"role": "user", "content": (
+            f'[{student_name}(학생): "유성은 하늘에서 타는 거고, 운석은 다 타지 않고 떨어진 거예요."]\n'
+            "지시: 학생의 설명에 반응하며 궁금증을 이어가세요."
+        )},
+        {"role": "assistant", "content": (
+            f'{{"content": "{student_name}야, 그렇구나. 그럼 운석이 되려면 엄청 커야 해? 작은 건 다 타버리는 거야?"}}'
+        )},
+        # 4. 선생님 질문 → 솔직한 모름
+        {"role": "user", "content": (
+            '[선생님: "운석에서 발견된 물질이 우리에게 어떤 의미가 있을까요? 준서는 어떻게 생각하나요?"]\n'
+            "지시: 솔직하게 모른다고 하며 질문을 이어가세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "저는 솔직히 잘 모르겠어요, 선생님. 글에서 생명체 관련 물질이 있다고는 했는데, 그게 실제로 뭘 의미하는지는 어려워서요."}'
+        )},
+        # 5. 민지 발언 → 새로운 의문 추가
+        {"role": "user", "content": (
+            '[민지: "글에서 물의 흔적이 있다고 했잖아. 그게 생명체 증거가 될 수 있어."]\n'
+            "지시: 민지 발언에 반응하며 새로운 의문을 제기하세요."
+        )},
+        {"role": "assistant", "content": (
+            '{"content": "민지 말 듣고 신기하긴 한데, 그 물이 지금도 있는 건 아니잖아? 흔적만 있으면 생명체가 살았다는 걸 어떻게 확신해?"}'
+        )},
+    ]
+
+
+# ────────────────────────────────────────────────────────────────
 # OpenAI 호출 헬퍼
 # ────────────────────────────────────────────────────────────────
 
-def _call_openai(system: str, user_prompt: str) -> str:
+def _call_openai(
+    system: str,
+    user_prompt: str,
+    few_shots: list[dict] | None = None,
+) -> str:
+    """
+    시스템 → few-shot 예시 → 실제 user 메시지 순으로 전달.
+    client.beta.chat.completions.parse로 DiscussionMessage 스키마 강제.
+    """
     client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    messages: list[dict] = [{"role": "system", "content": system}]
+    if few_shots:
+        messages.extend(few_shots)
+    messages.append({"role": "user", "content": user_prompt})
+
     completion = client.beta.chat.completions.parse(
-        model="gpt-4o-mini",
+        model=settings.AGENT_MODEL,
         response_format=DiscussionMessage,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_prompt},
-        ],
+        messages=messages,
         temperature=0.85,
         max_tokens=300,
     )
@@ -183,7 +349,7 @@ def call_moderator(
         f"{ctx_text}\n\n[현재 주제]: {topic_num}번째 주제 (총 3개 주제)\n\n[대화 이력]\n{history}\n\n"
         f"선생님으로서 존댓말로 {instruction}"
     )
-    return _call_openai(system, user_prompt)
+    return _call_openai(system, user_prompt, few_shots=_few_shots_moderator(student_name))
 
 
 def call_moderator_close(context: dict, messages: list[dict]) -> str:
@@ -197,7 +363,7 @@ def call_moderator_close(context: dict, messages: list[dict]) -> str:
         "오늘 나온 학생들의 다양한 의견을 간단히 언급하며, 수고했다는 따뜻한 격려로 마무리하세요. "
         "2~3문장으로 작성하세요."
     )
-    return _call_openai(system, user_prompt)
+    return _call_openai(system, user_prompt, few_shots=_few_shots_moderator(student_name))
 
 
 # ────────────────────────────────────────────────────────────────
@@ -232,7 +398,7 @@ def call_peer_a(context: dict, messages: list[dict], topic_num: int) -> str:
         f"{reaction_instruction}\n\n"
         f"민지로서 위 지시에 따라 발언하세요. 선생님께는 존댓말, 친구({student_name}·준서)에게는 반말을 사용하세요."
     )
-    return _call_openai(system, user_prompt)
+    return _call_openai(system, user_prompt, few_shots=_few_shots_peer_a(student_name))
 
 
 # ────────────────────────────────────────────────────────────────
@@ -269,4 +435,4 @@ def call_peer_b(context: dict, messages: list[dict], topic_num: int) -> str:
         f"{reaction_instruction}\n\n"
         f"준서로서 위 지시에 따라 발언하세요. 선생님께는 존댓말, 친구({student_name}·민지)에게는 반말을 사용하세요."
     )
-    return _call_openai(system, user_prompt)
+    return _call_openai(system, user_prompt, few_shots=_few_shots_peer_b(student_name))

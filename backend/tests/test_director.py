@@ -1,201 +1,80 @@
 """
-Director 엔진 유닛 테스트 — 5개 시나리오
-LLM·DB 호출을 mock하여 가드 룰과 스키마 검증만 테스트.
+P3 Director 가드 룰 검증 — 5가지 시나리오.
 
-실행:
-    cd backend
-    pip install pytest
-    pytest tests/test_director.py -v
+LLM 호출 없이 apply_guards()만 테스트한다.
+실행: python tests/test_director.py
 """
 
-import json
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-import pytest
-
-from app.services.director import (
-    DirectorDecision,
-    DirectorInput,
-    HistoryItem,
-    _apply_guards,
-    _fallback_decision,
-    decide,
-)
+from app.services.director import DirectorDecision, DirectorInput, apply_guards
 
 
-# ──────────────────────────────────────────────────────
-# 공통 픽스처
-# ──────────────────────────────────────────────────────
-
-def _make_inp(**overrides) -> DirectorInput:
-    defaults = dict(
-        passage_summary="운석은 태양계 형성 당시 생긴 암석 조각이다.",
-        history=[
-            HistoryItem(speaker="moderator", content="운석 연구가 왜 중요할까요?"),
-            HistoryItem(speaker="peer_a", content="태양계가 어떻게 만들어졌는지 알 수 있어요."),
-        ],
-        round=1,
-        last_speaker="peer_a",
-        user_idle_seconds=3.0,
-        turns_in_round=2,
-    )
-    defaults.update(overrides)
-    return DirectorInput(**defaults)
+def _inp(**kw) -> DirectorInput:
+    base = dict(session_id="test", round=1, round_turn_index=0,
+                last_speaker=None, recent_speakers=[], recent_summary=[],
+                all_correct=False, weak_areas=[], demo_mode=False, max_rounds=3)
+    base.update(kw)
+    return DirectorInput(**base)
 
 
-def _llm_response(decision: dict) -> MagicMock:
-    """Anthropic 클라이언트 messages.create() 가짜 응답 생성."""
-    msg = MagicMock()
-    msg.content = [SimpleNamespace(text=json.dumps(decision, ensure_ascii=False))]
-    client_mock = MagicMock()
-    client_mock.messages.create.return_value = msg
-    return client_mock
+def _dec(next_speaker, intent="summarize") -> DirectorDecision:
+    return DirectorDecision(next_speaker=next_speaker, intent=intent)
 
 
-# ──────────────────────────────────────────────────────
-# 시나리오 1: 정상 흐름 — peer_b 차례
-# ──────────────────────────────────────────────────────
-
-def test_scenario1_normal_flow():
-    """moderator → peer_a 다음, LLM이 peer_b 지정 → 그대로 통과."""
-    llm_decision = {
-        "next_speaker": "peer_b",
-        "intent": "민지 의견에 반응합니다.",
-        "target": "peer_a",
-        "should_advance_round": False,
-        "reason": "peer_a 다음은 peer_b 차례입니다.",
-    }
-    inp = _make_inp(last_speaker="peer_a")
-
-    with (
-        patch("app.services.director.anthropic.Anthropic", return_value=_llm_response(llm_decision)),
-        patch("app.services.director._save_to_db"),
-    ):
-        result = decide(inp, session_id=None)
-
-    assert result.next_speaker == "peer_b"
-    assert result.should_advance_round is False
-    assert isinstance(result.reason, str) and result.reason
+def test_s1_empty_history():
+    """이력 없음 + moderator 결정 → 가드 없이 통과."""
+    r = apply_guards(_dec("moderator"), _inp(last_speaker=None))
+    assert r.next_speaker == "moderator"
+    assert not r.reason.startswith("[guard]")
+    print("✓ S1: empty history, no guard fired")
 
 
-# ──────────────────────────────────────────────────────
-# 시나리오 2: Guard-2 — 학생 발언 직후 LLM이 user 재지정
-# ──────────────────────────────────────────────────────
-
-def test_scenario2_guard_user_after_user():
-    """last_speaker=user인데 LLM이 next_speaker=user로 잘못 결정 → moderator로 교정."""
-    llm_decision = {
-        "next_speaker": "user",       # ← 위반
-        "intent": "학생에게 다시 묻습니다.",
-        "target": "user",
-        "should_advance_round": False,
-        "reason": "학생의 의견을 더 듣고 싶습니다.",
-    }
-    inp = _make_inp(last_speaker="user", turns_in_round=3)
-
-    with (
-        patch("app.services.director.anthropic.Anthropic", return_value=_llm_response(llm_decision)),
-        patch("app.services.director._save_to_db"),
-    ):
-        result = decide(inp, session_id=None)
-
-    assert result.next_speaker != "user", "Guard-2: user→user 연속은 차단돼야 한다"
-    assert result.next_speaker == "moderator"
-    assert "Guard-2" in result.reason
+def test_s2_consecutive_blocked():
+    """peer_a 직후 peer_a → Guard2: peer_b로 교정."""
+    r = apply_guards(_dec("peer_a", "challenge"), _inp(last_speaker="peer_a"))
+    assert r.next_speaker == "peer_b"
+    assert r.intent == "redirect"
+    assert "[guard]" in r.reason
+    print("✓ S2: consecutive peer_a → peer_b")
 
 
-# ──────────────────────────────────────────────────────
-# 시나리오 3: Guard-3 — 연속 동일 발화자 차단
-# ──────────────────────────────────────────────────────
-
-def test_scenario3_guard_consecutive_same_speaker():
-    """last_speaker=peer_a인데 LLM이 peer_a를 다시 지정 → peer_b로 교정."""
-    llm_decision = {
-        "next_speaker": "peer_a",     # ← 위반
-        "intent": "추가 의견을 제시합니다.",
-        "target": "전체",
-        "should_advance_round": False,
-        "reason": "peer_a가 더 말하고 싶어합니다.",
-    }
-    inp = _make_inp(last_speaker="peer_a")
-
-    with (
-        patch("app.services.director.anthropic.Anthropic", return_value=_llm_response(llm_decision)),
-        patch("app.services.director._save_to_db"),
-    ):
-        result = decide(inp, session_id=None)
-
-    assert result.next_speaker != "peer_a", "Guard-3: 연속 동일 발화자는 차단돼야 한다"
-    assert result.next_speaker == "peer_b"
-    assert "Guard-3" in result.reason
+def test_s3_user_wait_forbidden():
+    """user 직후 wait_for_user → Guard3: moderator+summarize."""
+    r = apply_guards(_dec("wait_for_user"), _inp(last_speaker="user"))
+    assert r.next_speaker == "moderator"
+    assert r.intent == "summarize"
+    assert "[guard]" in r.reason
+    print("✓ S3: user→wait_for_user → moderator")
 
 
-# ──────────────────────────────────────────────────────
-# 시나리오 4: Guard-1 — round >= 4 강제 종료
-# ──────────────────────────────────────────────────────
-
-def test_scenario4_guard_round_overflow():
-    """round=4이면 LLM 결과와 무관하게 강제 종료."""
-    llm_decision = {
-        "next_speaker": "peer_a",
-        "intent": "새 주제를 시작합니다.",
-        "target": "user",
-        "should_advance_round": False,
-        "reason": "아직 할 말이 있습니다.",
-    }
-    inp = _make_inp(round=4, last_speaker="user")
-
-    with (
-        patch("app.services.director.anthropic.Anthropic", return_value=_llm_response(llm_decision)),
-        patch("app.services.director._save_to_db"),
-    ):
-        result = decide(inp, session_id=None)
-
-    assert result.should_advance_round is True, "Guard-1: round>=4이면 강제 종료"
-    assert result.next_speaker == "moderator"
-    assert "Guard-1" in result.reason
+def test_s4_round_overflow():
+    """round=4 → Guard1: 어떤 결정이든 close 강제."""
+    r = apply_guards(_dec("peer_a"), _inp(round=4, last_speaker="peer_b"))
+    assert r.next_speaker == "close"
+    assert "round exceeded" in r.reason
+    print("✓ S4: round=4 → close")
 
 
-# ──────────────────────────────────────────────────────
-# 시나리오 5: LLM 2회 실패 → Fallback
-# ──────────────────────────────────────────────────────
-
-def test_scenario5_llm_failure_fallback():
-    """LLM이 두 번 모두 예외를 발생시키면 fallback decision을 반환한다."""
-    inp = _make_inp(last_speaker="peer_b", turns_in_round=3)
-
-    broken_client = MagicMock()
-    broken_client.messages.create.side_effect = RuntimeError("API timeout")
-
-    with (
-        patch("app.services.director.anthropic.Anthropic", return_value=broken_client),
-        patch("app.services.director._save_to_db"),
-    ):
-        result = decide(inp, session_id=None)
-
-    # Fallback 결과도 유효한 DirectorDecision이어야 한다
-    assert isinstance(result, DirectorDecision)
-    assert result.next_speaker in ("moderator", "peer_a", "peer_b", "user")
-    # Guard-3: last_speaker=peer_b이면 fallback은 moderator
-    assert result.next_speaker != "peer_b", "Fallback도 가드가 적용돼야 한다"
-    assert result.next_speaker == "moderator"
+def test_s5_normal_flow():
+    """peer_a → peer_b 정상 흐름, 가드 미발동."""
+    r = apply_guards(_dec("peer_b", "ask_user"), _inp(last_speaker="peer_a"))
+    assert r.next_speaker == "peer_b"
+    assert r.intent == "ask_user"
+    assert not r.reason.startswith("[guard]")
+    print("✓ S5: peer_a→peer_b, no guard")
 
 
-# ──────────────────────────────────────────────────────
-# 보조: _apply_guards 직접 단위 테스트
-# ──────────────────────────────────────────────────────
-
-def test_apply_guards_all_pass():
-    """가드 위반이 없으면 원본 decision이 그대로 반환된다."""
-    inp = _make_inp(round=2, last_speaker="peer_a")
-    decision = DirectorDecision(
-        next_speaker="peer_b",
-        intent="peer_a 의견에 반응합니다.",
-        target="peer_a",
-        should_advance_round=False,
-        reason="정상 순서",
-    )
-    result = _apply_guards(decision, inp)
-    assert result.next_speaker == "peer_b"
-    assert "Guard" not in result.reason
+if __name__ == "__main__":
+    tests = [test_s1_empty_history, test_s2_consecutive_blocked,
+             test_s3_user_wait_forbidden, test_s4_round_overflow, test_s5_normal_flow]
+    failed = 0
+    for t in tests:
+        try:
+            t()
+        except Exception as e:
+            print(f"✗ {t.__name__}: {e}")
+            failed += 1
+    print(f"\n{'ALL PASSED' if not failed else f'{failed} FAILED'} ({len(tests)-failed}/{len(tests)})")
+    sys.exit(failed)

@@ -1,31 +1,36 @@
 """
 Discussion Orchestrator — Director Loop
-P4: 토론의 심장. Director가 상태를 보고 다음 발화자를 결정하는 메인 루프.
+P4 기반 + P3 LLM Director 통합.
 
 구조:
-  DiscussionState  — 토론 진행 상태 (라운드, 발화 순서, 이력)
-  DirectorDecision — Director의 다음 행동 결정
-  Director         — 상태 → 결정 (rule-based, P5에서 LLM으로 교체 가능)
+  DiscussionState   — 토론 진행 상태 (라운드, 발화 순서, 이력)
   stream_agent_turn — 에이전트 LLM 호출 → 큐로 이벤트 push
-  run_discussion   — 메인 async generator 루프
+  run_discussion    — 메인 async generator 루프
+  Director 결정     — services.director.decide() (AsyncOpenAI, gpt-4o-mini)
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Literal
+from typing import AsyncGenerator
+
+from openai import AsyncOpenAI
 
 from app.agents.discussion_agent import (
-    call_moderator,
     call_moderator_close,
-    call_peer_a,
-    call_peer_b,
+    load_prompt,
 )
+from app.core.config import settings
 from app.core.constants import MAX_DISCUSSION_TOPICS
 from app.core.supabase import supabase
+from app.services.director import DirectorDecision, DirectorInput, decide as llm_decide
+
+_async_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -132,106 +137,98 @@ class DiscussionState:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Director
+#  Director Input 빌더
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_NextSpeaker = Literal["moderator", "peer_a", "peer_b", "wait_for_user", "close", "_advance_round"]
 
-
-@dataclass
-class DirectorDecision:
-    """Director가 내린 다음 행동 결정."""
-
-    next_speaker: _NextSpeaker
-    intent: str | None = None   # challenge/agree/ask_user/summarize/redirect/nudge
-    target: str | None = None   # 응답 대상 발화자
-
-
-# round_turn_index → (발화자, 의도)
-_TURN_SEQUENCE: list[tuple[str, str]] = [
-    ("moderator", "summarize"),
-    ("peer_a", "challenge"),
-    ("peer_b", "ask_user"),
-]
-
-
-class Director:
-    """
-    Rule-based Director (P4).
-    상태를 보고 다음 발화자와 의도를 결정한다.
-
-    P5 이후 LLM 기반 Director(claude-haiku)로 decide()를 교체할 수 있다.
-    인터페이스: decide(state: DiscussionState) -> DirectorDecision
-    """
-
-    def decide(self, state: DiscussionState) -> DirectorDecision:
-        # 라운드 초과 → 사회자 마무리 발언 후 종료
-        if state.round > MAX_DISCUSSION_TOPICS:
-            return DirectorDecision(next_speaker="close")
-
-        idx = state.round_turn_index
-
-        # 사회자/민지/준서 차례
-        if idx < len(_TURN_SEQUENCE):
-            speaker, intent = _TURN_SEQUENCE[idx]
-            return DirectorDecision(
-                next_speaker=speaker,  # type: ignore[arg-type]
-                intent=intent,
-                target="user",
-            )
-
-        # idx == 3: 학생 차례
-        if state.demo_mode:
-            # 자동 데모 모드: 학생 턴 건너뛰고 다음 라운드
-            return DirectorDecision(next_speaker="_advance_round")
-
-        return DirectorDecision(next_speaker="wait_for_user")
+def _make_director_input(state: DiscussionState) -> DirectorInput:
+    """DiscussionState → DirectorInput 변환."""
+    recent = state.history[-5:]
+    return DirectorInput(
+        session_id=state.session_id,
+        round=state.round,
+        round_turn_index=state.round_turn_index,
+        last_speaker=state.history[-1].speaker if state.history else None,
+        recent_speakers=[t.speaker for t in recent],
+        recent_summary=[f"{t.speaker}: {t.content[:40]}" for t in recent],
+        all_correct=state.context.get("all_correct", False),
+        weak_areas=state.context.get("weak_areas", []),
+        demo_mode=state.demo_mode,
+    )
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  Agent Turn Streaming
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-_AGENT_FN = {
-    "moderator": call_moderator,
-    "peer_a": call_peer_a,
-    "peer_b": call_peer_b,
-}
+def build_history_messages(state: DiscussionState) -> list[dict]:
+    """DiscussionState.history → OpenAI 메시지 형식 변환 (최근 10턴)."""
+    speaker_labels = {
+        "moderator": "선생님",
+        "peer_a": "민지",
+        "peer_b": "준서",
+        "user": state.context.get("student_name", "학생"),
+    }
+    result = []
+    for t in state.history[-10:]:
+        role = "user" if t.speaker == "user" else "assistant"
+        label = speaker_labels.get(t.speaker, t.speaker)
+        result.append({"role": role, "content": f"[{label}] {t.content}"})
+    return result
 
 
 async def stream_agent_turn(
-    speaker: str,
+    decision: DirectorDecision,
     state: DiscussionState,
     out_queue: asyncio.Queue,  # type: ignore[type-arg]
 ) -> str:
     """
-    캐릭터별 LLM 호출 → 완성된 발화를 큐에 push → DB 저장.
+    캐릭터별 LLM 스트리밍 호출 → turn_start / token / turn_end 이벤트를 큐에 push.
 
-    현재는 완성된 발화를 통째로 push한다(토큰 레벨 스트리밍은 추후 확장).
-    반환값: 생성된 발화 텍스트.
+    반환값: 생성된 전체 발화 텍스트.
     """
-    agent_fn = _AGENT_FN[speaker]
-    history_dicts = state.history_as_dicts()
-    context = state.context
-    topic_num = state.round
+    speaker = decision.next_speaker
+    student_name = state.context.get("student_name", "학생")
+    system_prompt = load_prompt(speaker, student_name=student_name)
 
-    loop = asyncio.get_event_loop()
-    t0 = loop.time()
-    content: str = await asyncio.to_thread(agent_fn, context, history_dicts, topic_num)
-    latency_ms = int((loop.time() - t0) * 1000)
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        *build_history_messages(state),
+        {"role": "user", "content": f"intent={decision.intent}, target={decision.target}"},
+    ]
+
+    turn_id = str(uuid.uuid4())
+    await out_queue.put({"event": "turn_start", "speaker": speaker, "turn_id": turn_id, "round": state.round})
+
+    full_text = ""
+    t0 = time.time()
+
+    stream = await _async_client.chat.completions.create(
+        model=settings.AGENT_MODEL,
+        messages=messages,
+        stream=True,
+        temperature=0.8,
+        max_tokens=200,
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content
+        if delta:
+            full_text += delta
+            await out_queue.put({"event": "token", "speaker": speaker, "text": delta, "turn_id": turn_id})
+
+    latency_ms = int((time.time() - t0) * 1000)
+    await out_queue.put({"event": "turn_end", "speaker": speaker, "full_text": full_text, "turn_id": turn_id, "round": state.round})
 
     _save_message(
         session_id=state.session_id,
         speaker=speaker,
-        content=content,
-        round_num=topic_num,
+        content=full_text,
+        round_num=state.round,
         role="assistant",
     )
     _log_llm_call(session_id=state.session_id, agent=speaker, latency_ms=latency_ms)
 
-    event: dict = {"speaker": speaker, "content": content, "round": topic_num}
-    await out_queue.put(event)
-    return content
+    return full_text
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -290,21 +287,19 @@ async def run_discussion(
     )
 
     # ── 3. Director Loop ───────────────────────────────────
-    director = Director()
     out_queue: asyncio.Queue = asyncio.Queue()
 
     while not state.is_final:
-        decision = director.decide(state)
+        decision = await llm_decide(_make_director_input(state))
 
         # ── 학생 대기 ──────────────────────────────────────
         if decision.next_speaker == "wait_for_user":
+            if state.demo_mode:
+                # 데모 모드: 학생 턴 건너뛰고 다음 라운드
+                state.advance_round()
+                continue
             yield {"next_speaker": "user", "round": state.round, "is_final": False}
             return
-
-        # ── 데모 모드: 학생 턴 건너뛰기 ────────────────────
-        elif decision.next_speaker == "_advance_round":
-            state.advance_round()
-            continue
 
         # ── 종료: 사회자 마무리 발언 + is_final ─────────────
         elif decision.next_speaker == "close":
@@ -331,9 +326,10 @@ async def run_discussion(
 
         # ── AI 에이전트 발화 ────────────────────────────────
         else:
-            content = await stream_agent_turn(decision.next_speaker, state, out_queue)
+            content = await stream_agent_turn(decision, state, out_queue)
             state.record_ai_turn(decision.next_speaker, content)
-            yield out_queue.get_nowait()
+            while not out_queue.empty():
+                yield out_queue.get_nowait()
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -1,261 +1,240 @@
 """
-Director 엔진 — "다음에 누가 무엇을 말할지" 결정하는 저비용 LLM 모듈.
+P3 Director Engine — LLM 기반 토의 진행 결정 엔진.
 
-사용 방법:
+OpenAI AsyncOpenAI + DIRECTOR_MODEL 환경변수.
+response_format={"type":"json_object"}로 JSON 강제.
+가드 룰 적용 → director_calls 테이블 저장.
+
+사용:
     from app.services.director import decide, DirectorInput
-
-    decision = decide(
-        DirectorInput(
-            passage_summary="운석에 관한 지문",
-            history=[{"speaker": "moderator", "content": "..."}, ...],
-            round=1,
-            last_speaker="moderator",
-            user_idle_seconds=0.0,
-            turns_in_round=1,
-        ),
-        session_id="uuid-string",   # DB 저장용, None이면 저장 생략
-    )
-
-director_calls 테이블 스키마 (migrations/001_p1_schema.sql 참조):
-    id           UUID PK
-    session_id   UUID FK → sessions
-    round        INTEGER
-    input_state  JSONB   ← DirectorInput 전체
-    decision     JSONB   ← DirectorDecision 전체
-    latency_ms   INTEGER
-    model        TEXT
-    created_at   TIMESTAMPTZ
+    decision = await decide(DirectorInput(session_id=..., round=1, ...))
 """
 
+from __future__ import annotations
+
+import asyncio
+import json
 import logging
 import time
 from typing import Literal
 
-from openai import OpenAI
-from pydantic import BaseModel
+from openai import AsyncOpenAI
+from pydantic import BaseModel, field_validator
 
 from app.core.config import settings
+from app.core.constants import MAX_DISCUSSION_TOPICS
 from app.core.supabase import supabase
 
 logger = logging.getLogger("uvicorn.error")
 
-# ──────────────────────────────────────────────────────
-# Schemas
-# ──────────────────────────────────────────────────────
+_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-Speaker = Literal["moderator", "peer_a", "peer_b", "user"]
-_AI_SPEAKERS: list[Speaker] = ["moderator", "peer_a", "peer_b"]
+ValidSpeaker = Literal["moderator", "peer_a", "peer_b", "wait_for_user", "close"]
+ValidIntent = Literal["challenge", "agree", "ask_user", "summarize", "redirect", "nudge"]
 
 
-class HistoryItem(BaseModel):
-    speaker: str
-    content: str
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  I/O 스키마
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
 class DirectorInput(BaseModel):
-    passage_summary: str
-    history: list[HistoryItem]
+    """Director LLM에 전달하는 상태 스냅샷."""
+
+    session_id: str
     round: int
-    last_speaker: str
-    user_idle_seconds: float = 0.0
-    turns_in_round: int
+    round_turn_index: int
+    last_speaker: str | None = None
+    recent_speakers: list[str] = []    # 최근 5턴 발화자 목록
+    recent_summary: list[str] = []     # 최근 5턴 "speaker: 내용앞40자"
+    all_correct: bool = False
+    weak_areas: list[str] = []
+    demo_mode: bool = False
+    max_rounds: int = MAX_DISCUSSION_TOPICS
 
 
 class DirectorDecision(BaseModel):
-    next_speaker: Speaker
-    intent: str        # 다음 발화자가 해야 할 것 (한 문장)
-    target: str        # 누구에게 말하는지
-    should_advance_round: bool
-    reason: str        # 결정 이유 (한 문장)
+    """Director LLM의 결정. apply_guards() 통과 후 최종 사용."""
+
+    next_speaker: ValidSpeaker
+    intent: ValidIntent = "summarize"
+    target: str | None = None
+    reason: str = ""
+
+    @field_validator("next_speaker", mode="before")
+    @classmethod
+    def _validate_speaker(cls, v: object) -> str:
+        allowed = {"moderator", "peer_a", "peer_b", "wait_for_user", "close"}
+        if str(v) not in allowed:
+            raise ValueError(f"next_speaker must be one of {allowed}, got {v!r}")
+        return str(v)
+
+    @field_validator("intent", mode="before")
+    @classmethod
+    def _coerce_intent(cls, v: object) -> str:
+        allowed = {"challenge", "agree", "ask_user", "summarize", "redirect", "nudge"}
+        return str(v) if str(v) in allowed else "summarize"
 
 
-# ──────────────────────────────────────────────────────
-# Guard rules (코드 레벨 — LLM이 어겨도 강제 교정)
-# ──────────────────────────────────────────────────────
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  System Prompt
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _apply_guards(decision: DirectorDecision, inp: DirectorInput) -> DirectorDecision:
+DIRECTOR_PROMPT = """당신은 초등학생 독서 토의를 이끄는 Director AI입니다.
+현재 토의 상태(JSON)를 분석해 다음 발화자와 의도를 결정하세요.
+
+【발화자 선택지】
+- moderator    : 선생님. 주제 소개, 의견 요약, 심화 질문
+- peer_a       : 민지(적극적). 자신 있게 의견 제시, 논쟁
+- peer_b       : 준서(소극적). 궁금점 질문, 동의 또는 반론
+- wait_for_user: 실제 학생의 답변 대기
+- close        : 토의 마무리 (round > max_rounds 일 때만 선택)
+
+【의도 선택지】
+challenge | agree | ask_user | summarize | redirect | nudge
+
+【라운드당 권장 순서】
+moderator → peer_a → peer_b → wait_for_user → (다음 라운드)
+
+【절대 금지】
+- 연속으로 같은 발화자 선택
+- 학생(user) 발언 직후 wait_for_user 선택
+- round ≤ max_rounds 인데 close 선택
+
+반드시 JSON만 출력하세요 (다른 텍스트 금지):
+{"next_speaker": "...", "intent": "...", "target": "user", "reason": "한 줄 이유"}"""
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  가드 룰
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 연속 발화 방지: 현재 발화자 → 강제 대체 발화자
+_REDIRECT_TO: dict[str, ValidSpeaker] = {
+    "moderator": "peer_a",
+    "peer_a": "peer_b",
+    "peer_b": "wait_for_user",
+    "wait_for_user": "moderator",
+    "user": "moderator",
+}
+
+
+def apply_guards(decision: DirectorDecision, inp: DirectorInput) -> DirectorDecision:
     """
-    세 가지 가드 룰을 순서대로 적용한다.
-    룰 위반 시 decision 필드를 교정하되, 나머지 필드는 보존한다.
+    가드 룰을 순서대로 적용. 우선순위: round 초과 > 연속 발화 > user 직후 wait.
+
+    반환: 가드가 적용된(또는 원본) DirectorDecision.
     """
-
-    # Guard 1: round >= 4 → 강제 종료
-    if inp.round >= 4:
-        return DirectorDecision(
-            next_speaker="moderator",
-            intent="토의를 마무리하며 수고했다고 격려합니다.",
-            target="전체",
-            should_advance_round=True,
-            reason=f"Guard-1: round={inp.round} >= 4, 세션 강제 종료",
+    # Guard 1: round ≥ 4 → 강제 종료
+    if inp.round > inp.max_rounds:
+        return decision.model_copy(
+            update={
+                "next_speaker": "close",
+                "reason": "[guard] round exceeded max_rounds",
+            }
         )
 
-    # Guard 2: 학생 발언 직후 → AI가 반드시 응답 (wait_for_user 금지)
-    if inp.last_speaker == "user" and decision.next_speaker == "user":
-        corrected = "moderator"
-        logger.warning(
-            "Director guard-2: user→user 연속 차단, moderator로 교정 (원래 이유: %s)",
-            decision.reason,
-        )
-        decision = DirectorDecision(
-            next_speaker=corrected,
-            intent=decision.intent,
-            target=decision.target,
-            should_advance_round=decision.should_advance_round,
-            reason=f"Guard-2: 학생 발언 직후 user 재지정 차단 → {corrected}. 원래: {decision.reason}",
+    # Guard 2: 같은 발화자 연속 2회 금지
+    if inp.last_speaker and decision.next_speaker == inp.last_speaker:
+        redirected: ValidSpeaker = _REDIRECT_TO.get(inp.last_speaker, "moderator")  # type: ignore[assignment]
+        logger.debug("[guard] consecutive %s → %s", inp.last_speaker, redirected)
+        decision = decision.model_copy(
+            update={
+                "next_speaker": redirected,
+                "intent": "redirect",
+                "reason": f"[guard] consecutive {inp.last_speaker} blocked → {redirected}",
+            }
         )
 
-    # Guard 3: 같은 발화자 연속 2회 금지 (user 제외)
-    if (
-        decision.next_speaker != "user"
-        and decision.next_speaker == inp.last_speaker
-    ):
-        cur_idx = _AI_SPEAKERS.index(inp.last_speaker) if inp.last_speaker in _AI_SPEAKERS else 0
-        corrected = _AI_SPEAKERS[(cur_idx + 1) % len(_AI_SPEAKERS)]
-        logger.warning(
-            "Director guard-3: 동일 발화자(%s) 연속 차단 → %s (원래 이유: %s)",
-            inp.last_speaker, corrected, decision.reason,
-        )
-        decision = DirectorDecision(
-            next_speaker=corrected,
-            intent=decision.intent,
-            target=decision.target,
-            should_advance_round=decision.should_advance_round,
-            reason=f"Guard-3: 연속 동일 발화자({inp.last_speaker}) 차단 → {corrected}. 원래: {decision.reason}",
+    # Guard 3: 학생 발언 직후 wait_for_user 금지
+    if inp.last_speaker == "user" and decision.next_speaker == "wait_for_user":
+        decision = decision.model_copy(
+            update={
+                "next_speaker": "moderator",
+                "intent": "summarize",
+                "reason": "[guard] user just spoke; wait_for_user forbidden",
+            }
         )
 
     return decision
 
 
-# ──────────────────────────────────────────────────────
-# LLM 호출 (Anthropic Claude Haiku — JSON-only)
-# ──────────────────────────────────────────────────────
-
-_SYSTEM_PROMPT = """\
-당신은 한국 초등학교 독서 토의 세션의 Director입니다.
-다음 발화자와 그 의도를 결정하세요.
-
-발화자 목록:
-- moderator : 선생님(사회자), 토의 안내·심화 질문
-- peer_a    : 민지, 자신감 있는 또래 학생
-- peer_b    : 준서, 소극적이고 궁금한 게 많은 또래 학생
-- user      : 실제 학생 (입력 차례를 줄 때만 사용)
-
-판단 기준:
-- 같은 발화자를 연속으로 지정하지 마세요.
-- 학생(user) 발언 직후에는 반드시 AI 발화자를 지정하세요.
-- turns_in_round >= 3이고 user도 발언했다면 should_advance_round=true를 고려하세요.
-- round >= 4이면 should_advance_round=true로 설정하세요.\
-"""
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  메인 함수
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def _build_user_prompt(inp: DirectorInput) -> str:
-    history_lines = "\n".join(
-        f"  [{m.speaker}] {m.content}"
-        for m in inp.history[-10:]  # 최근 10개만 전달
-    ) or "  (없음)"
+async def decide(inp: DirectorInput) -> DirectorDecision:
+    """
+    OpenAI LLM으로 다음 발화자/의도 결정.
 
-    return (
-        f"[지문 요약] {inp.passage_summary}\n\n"
-        f"[현재 라운드] {inp.round}\n"
-        f"[이번 라운드 발화 수] {inp.turns_in_round}\n"
-        f"[마지막 발화자] {inp.last_speaker}\n"
-        f"[사용자 대기 시간(초)] {inp.user_idle_seconds:.0f}\n\n"
-        f"[최근 대화 이력]\n{history_lines}\n\n"
-        "다음 발화자를 결정하고 JSON으로만 응답하세요."
-    )
+    실패 시 rule-based 폴백 → 가드 적용 → director_calls 저장.
+    """
+    t0 = time.time()
+    decision: DirectorDecision
+
+    try:
+        resp = await _client.chat.completions.create(
+            model=settings.DIRECTOR_MODEL,
+            messages=[
+                {"role": "system", "content": DIRECTOR_PROMPT},
+                {
+                    "role": "user",
+                    "content": json.dumps(inp.model_dump(), ensure_ascii=False),
+                },
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=200,
+        )
+        raw = resp.choices[0].message.content or "{}"
+        decision = DirectorDecision.model_validate_json(raw)
+    except Exception:
+        logger.warning("Director LLM 실패 → rule-based 폴백", exc_info=True)
+        decision = _rule_based_fallback(inp)
+
+    decision = apply_guards(decision, inp)
+    latency_ms = int((time.time() - t0) * 1000)
+    await _save_director_call(inp, decision, latency_ms)
+    return decision
 
 
-def _call_llm_once(inp: DirectorInput) -> DirectorDecision:
-    """단일 LLM 호출 → DirectorDecision 반환. 실패 시 예외."""
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
-    completion = client.beta.chat.completions.parse(
-        model=settings.DIRECTOR_MODEL,
-        response_format=DirectorDecision,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": _build_user_prompt(inp)},
-        ],
-        max_tokens=300,
-        temperature=0.3,
-    )
-    parsed = completion.choices[0].message.parsed
-    if parsed is None:
-        raise ValueError("empty director structured output")
-    return parsed
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  내부 헬퍼
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+_FALLBACK_SEQ: list[tuple[ValidSpeaker, ValidIntent]] = [
+    ("moderator", "summarize"),
+    ("peer_a", "challenge"),
+    ("peer_b", "ask_user"),
+    ("wait_for_user", "nudge"),
+]
 
 
-# ──────────────────────────────────────────────────────
-# DB 저장
-# ──────────────────────────────────────────────────────
+def _rule_based_fallback(inp: DirectorInput) -> DirectorDecision:
+    """LLM 실패 시 round_turn_index 기반 rule-based 결정."""
+    if inp.round > inp.max_rounds:
+        return DirectorDecision(next_speaker="close", reason="[fallback] round exceeded")
+    idx = min(inp.round_turn_index, len(_FALLBACK_SEQ) - 1)
+    speaker, intent = _FALLBACK_SEQ[idx]
+    return DirectorDecision(next_speaker=speaker, intent=intent, reason="[fallback] rule-based")
 
-def _save_to_db(
+
+async def _save_director_call(
     inp: DirectorInput,
     decision: DirectorDecision,
     latency_ms: int,
-    session_id: str | None,
 ) -> None:
-    if session_id is None:
-        return
     try:
-        supabase.table("director_calls").insert({
-            "session_id": session_id,
-            "round": inp.round,
-            "input_state": inp.model_dump(),
-            "decision": decision.model_dump(),
-            "latency_ms": latency_ms,
-            "model": settings.DIRECTOR_MODEL,
-        }).execute()
+        await asyncio.to_thread(
+            lambda: supabase.table("director_calls").insert({
+                "session_id": inp.session_id,
+                "round": inp.round,
+                "input_state": inp.model_dump(),
+                "decision": decision.model_dump(),
+                "latency_ms": latency_ms,
+                "model": settings.DIRECTOR_MODEL,
+            }).execute()
+        )
     except Exception:
-        logger.exception("director_calls DB 저장 실패 (session_id=%s)", session_id)
-
-
-# ──────────────────────────────────────────────────────
-# Fallback
-# ──────────────────────────────────────────────────────
-
-def _fallback_decision(inp: DirectorInput) -> DirectorDecision:
-    """LLM 2회 모두 실패 시 코드 기반 기본값."""
-    cur_idx = _AI_SPEAKERS.index(inp.last_speaker) if inp.last_speaker in _AI_SPEAKERS else -1
-    next_sp = _AI_SPEAKERS[(cur_idx + 1) % len(_AI_SPEAKERS)]
-    return DirectorDecision(
-        next_speaker=next_sp,
-        intent="대화를 자연스럽게 이어갑니다.",
-        target="전체",
-        should_advance_round=False,
-        reason="Fallback: LLM 2회 호출 모두 실패",
-    )
-
-
-# ──────────────────────────────────────────────────────
-# Public API
-# ──────────────────────────────────────────────────────
-
-def decide(inp: DirectorInput, session_id: str | None = None) -> DirectorDecision:
-    """
-    Director 메인 진입점.
-
-    1. LLM 호출 (최대 2회)
-    2. Pydantic 검증
-    3. 가드 룰 적용
-    4. director_calls 테이블에 저장
-    5. DirectorDecision 반환
-
-    session_id=None이면 DB 저장 생략 (테스트용).
-    """
-    t0 = time.monotonic()
-    decision: DirectorDecision | None = None
-
-    for attempt in range(2):
-        try:
-            decision = _call_llm_once(inp)
-            break
-        except Exception as exc:
-            logger.warning("Director LLM 시도 %d 실패: %s", attempt + 1, exc)
-
-    if decision is None:
-        decision = _fallback_decision(inp)
-
-    decision = _apply_guards(decision, inp)
-    latency_ms = int((time.monotonic() - t0) * 1000)
-    _save_to_db(inp, decision, latency_ms, session_id)
-    return decision
+        logger.warning("director_calls 저장 실패", exc_info=True)
