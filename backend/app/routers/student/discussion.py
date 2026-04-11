@@ -23,6 +23,7 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 from app.core.deps import get_current_student
+from app.core.llm_logging import log_session_event
 from app.core.state import create_channel, remove_channel
 from app.core.supabase import supabase
 from app.schemas.llm import PassageGeneration
@@ -308,6 +309,10 @@ async def discussion_sse_get(
                             except asyncio.TimeoutError:
                                 idle_elapsed += _IDLE_TICK_SEC
                                 yield _sse({"type": "user_idle", "idle_seconds": idle_elapsed})
+                                log_session_event(session_id, "user_idle", {
+                                    "round": current_round,
+                                    "idle_seconds": idle_elapsed,
+                                })
                                 logger.debug(
                                     "user_idle: session_id=%s idle=%ds", session_id, idle_elapsed
                                 )
@@ -341,6 +346,10 @@ async def discussion_sse_get(
                     if not user_received:
                         # 학생 발화 없이 90초 경과 → skip 저장 후 다음 라운드
                         _save_message_to_db(session_id, "user", "(응답 없음)", current_round, role="user")
+                        log_session_event(session_id, "user_skip", {
+                            "round": current_round,
+                            "idle_seconds": idle_elapsed,
+                        })
                         yield _sse({"type": "user_skip", "round": current_round})
 
                     # turns 엔드포인트 또는 skip이 DB에 이미 저장했으므로 빈 content로 재호출
