@@ -212,41 +212,67 @@ async def stream_agent_turn(
     if qr_lines:
         system_prompt += "\n\n[객관식 결과]\n" + "\n".join(qr_lines)
 
-    # 발화 지시를 자연어로 구성 (intent=X, target=None 형태가 거절 패턴 유발)
-    is_first_turn = not state.history  # history 없음 = 세션 첫 발화
-    intent_map = {
-        "challenge": "직전 발언에 반론을 제시하세요.",
-        "agree": "직전 발언에 공감하며 의견을 더하세요.",
-        "ask_user": f"{student_name}에게 질문하세요.",
-        "summarize": "대화를 짧게 정리하고 다음 발언자에게 질문을 넘기세요.",
-        "redirect": "주제를 지문으로 자연스럽게 되돌리세요.",
-        "nudge": f"{student_name}가 발언할 수 있도록 부드럽게 유도하세요.",
-        "acknowledge": "방금 발언을 자연스럽게 받아 응답하세요.",
-    }
-    # 학생 차례(wait_for_user) 전에 또래가 ask_user를 받으면 의견 발화로 교체
+    # ── 3단계 구조에 맞춘 발화 지시 생성 ─────────────────────
+    CHAR_LIMIT = "공백 포함 50자 이내로 말씀하세요."
+    is_first_turn = not state.history
+    round_num = state.round
+    speakers_this_round = {t.speaker for t in state.history if t.round == round_num}
     student_has_spoken = any(t.speaker == "user" for t in state.history)
 
     if is_first_turn:
-        # 세션 첫 발화: history 없으므로 hallucination 방지, 주제 소개 강제
-        instruction = "위 지문을 바탕으로 토의 주제 1개를 소개하고, 민지에게 먼저 의견을 물어보세요."
-    elif speaker == "peer_a" and not student_has_spoken:
-        # 민지 첫 발화: 학생이 아직 안 말했으면 의견 제시 (ask_user 방지)
-        instruction = (
-            "선생님이 소개한 주제에 대해 지문 근거를 들어 자신의 의견을 분명히 말하세요. "
-            f"아직 {student_name} 차례가 아니므로 {student_name}에게 질문하지 마세요."
-        )
-    elif speaker == "peer_b" and not student_has_spoken:
-        # 준서 첫 발화: 민지 발언에 반응 (ask_user 방지)
-        instruction = (
-            "민지의 직전 발언에 이름을 부르며 직접 반응하세요. "
-            f"동의하거나 다른 시각을 제시하세요. {student_name}에게 질문하지 마세요."
-        )
+        # 세션 첫 발화: history 없음 → hallucination 방지, 주제 소개 강제
+        instruction = f"위 지문을 바탕으로 토의 주제를 소개하고, 민지에게 의견을 물어보세요. {CHAR_LIMIT}"
+
+    elif round_num == 1:  # ── 1단계: 의견 나누기 ──────────────────
+        if speaker == "peer_a" and not student_has_spoken:
+            instruction = (
+                f"선생님이 소개한 주제에 대해 지문 근거를 들어 자신의 의견을 말씀하세요. "
+                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
+            )
+        elif speaker == "peer_b" and not student_has_spoken:
+            instruction = (
+                f"민지의 발언에 이름을 부르며 반응하고, 자신의 의견을 말씀하세요. "
+                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
+            )
+        elif speaker == "moderator":
+            instruction = (
+                f"민지·준서 의견을 한 문장으로 정리하고 "
+                f"{student_name}에게 의견을 물어보세요. {CHAR_LIMIT}"
+            )
+        else:
+            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
+
+    elif round_num == 2:  # ── 2단계: 반박하기 ──────────────────────
+        if speaker == "moderator" and "moderator" not in speakers_this_round:
+            instruction = (
+                f"1단계 의견을 한 문장으로 정리하고 반박 단계를 소개해 주세요. "
+                f"마지막에 {student_name}에게 누구의 의견에 반박하고 싶은지 선택을 요청하세요. {CHAR_LIMIT}"
+            )
+        elif speaker == "peer_a" and not student_has_spoken:
+            instruction = (
+                f"1단계에서 나온 의견 중 하나를 지문 근거로 반박하세요. "
+                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
+            )
+        elif speaker == "peer_b" and not student_has_spoken:
+            instruction = (
+                f"민지의 반박에 반응하거나 다른 의견을 반박하세요. "
+                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
+            )
+        else:
+            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
+
+    elif round_num >= 3:  # ── 3단계: 결론 내기 ──────────────────────
+        if speaker == "moderator" and "moderator" not in speakers_this_round:
+            instruction = (
+                f"토의를 정리하며 각자 결론을 말해 달라고 안내해 주세요. {CHAR_LIMIT}"
+            )
+        elif speaker in ("peer_a", "peer_b"):
+            instruction = f"오늘 토의에서 배운 점이나 내린 결론을 말씀하세요. {CHAR_LIMIT}"
+        else:
+            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
+
     else:
-        instruction = intent_map.get(decision.intent, "자연스럽게 발언하세요.")
-        if decision.target and decision.target not in ("None", "null"):
-            target_label = {"user": student_name, "moderator": "선생님",
-                            "peer_a": "민지", "peer_b": "준서"}.get(decision.target, decision.target)
-            instruction += f" (대상: {target_label})"
+        instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
 
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
@@ -274,7 +300,7 @@ async def stream_agent_turn(
                 stream=True,
                 stream_options={"include_usage": True},
                 temperature=0.8,
-                max_tokens=200,
+                max_tokens=120,
                 seed=seed,
             )
             break  # 성공
