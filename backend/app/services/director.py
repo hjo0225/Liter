@@ -27,13 +27,12 @@ director_calls 테이블 스키마 (migrations/001_p1_schema.sql 참조):
     created_at   TIMESTAMPTZ
 """
 
-import json
 import logging
 import time
 from typing import Literal
 
-import anthropic
-from pydantic import BaseModel, ValidationError
+from openai import OpenAI
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.supabase import supabase
@@ -133,8 +132,7 @@ def _apply_guards(decision: DirectorDecision, inp: DirectorInput) -> DirectorDec
 
 _SYSTEM_PROMPT = """\
 당신은 한국 초등학교 독서 토의 세션의 Director입니다.
-다음 발화자와 그 의도를 결정하고, 반드시 아래 JSON 형식으로만 응답하세요.
-JSON 외 어떤 텍스트도 출력하지 마세요.
+다음 발화자와 그 의도를 결정하세요.
 
 발화자 목록:
 - moderator : 선생님(사회자), 토의 안내·심화 질문
@@ -146,16 +144,7 @@ JSON 외 어떤 텍스트도 출력하지 마세요.
 - 같은 발화자를 연속으로 지정하지 마세요.
 - 학생(user) 발언 직후에는 반드시 AI 발화자를 지정하세요.
 - turns_in_round >= 3이고 user도 발언했다면 should_advance_round=true를 고려하세요.
-- round >= 4이면 should_advance_round=true로 설정하세요.
-
-응답 형식 (반드시 이 JSON만):
-{
-  "next_speaker": "moderator" | "peer_a" | "peer_b" | "user",
-  "intent": "다음 발화자가 해야 할 행동 (한국어 한 문장)",
-  "target": "말을 거는 대상 (한국어)",
-  "should_advance_round": true | false,
-  "reason": "이 결정을 내린 이유 (한국어 한 문장)"
-}\
+- round >= 4이면 should_advance_round=true로 설정하세요.\
 """
 
 
@@ -176,17 +165,23 @@ def _build_user_prompt(inp: DirectorInput) -> str:
     )
 
 
-def _call_llm_once(inp: DirectorInput) -> dict:
-    """단일 LLM 호출 → 파싱된 dict 반환. 실패 시 예외."""
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-    message = client.messages.create(
+def _call_llm_once(inp: DirectorInput) -> DirectorDecision:
+    """단일 LLM 호출 → DirectorDecision 반환. 실패 시 예외."""
+    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    completion = client.beta.chat.completions.parse(
         model=settings.DIRECTOR_MODEL,
+        response_format=DirectorDecision,
+        messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": _build_user_prompt(inp)},
+        ],
         max_tokens=300,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _build_user_prompt(inp)}],
+        temperature=0.3,
     )
-    raw = message.content[0].text.strip()
-    return json.loads(raw)
+    parsed = completion.choices[0].message.parsed
+    if parsed is None:
+        raise ValueError("empty director structured output")
+    return parsed
 
 
 # ──────────────────────────────────────────────────────
@@ -252,10 +247,9 @@ def decide(inp: DirectorInput, session_id: str | None = None) -> DirectorDecisio
 
     for attempt in range(2):
         try:
-            raw = _call_llm_once(inp)
-            decision = DirectorDecision.model_validate(raw)
+            decision = _call_llm_once(inp)
             break
-        except (json.JSONDecodeError, ValidationError, Exception) as exc:
+        except Exception as exc:
             logger.warning("Director LLM 시도 %d 실패: %s", attempt + 1, exc)
 
     if decision is None:

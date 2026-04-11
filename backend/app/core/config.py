@@ -9,14 +9,14 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str
     JWT_SECRET: str
     OPENAI_API_KEY: str
-    ANTHROPIC_API_KEY: str = ""
     APP_ENV: str = "dev"
 
-    # LLM 모델 분리
-    # Director (의사결정, 저비용): claude-haiku-4-5-20251001
-    # Agent (발화 생성, 고품질): claude-sonnet-4-6
-    DIRECTOR_MODEL: str = "claude-haiku-4-5-20251001"
-    AGENT_MODEL: str = "claude-sonnet-4-6"
+    # LLM
+    LLM_PROVIDER: str = "openai"
+    # Director (의사결정, 저비용)
+    # Agent (발화 생성 — 품질 부족 시 gpt-4o로 교체)
+    DIRECTOR_MODEL: str = "gpt-4o-mini"
+    AGENT_MODEL: str = "gpt-4o-mini"
 
 
 settings = Settings()
