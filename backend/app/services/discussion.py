@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, RateLimitError as OpenAIRateLimitError
 
 from app.agents.discussion_agent import (
     call_moderator_close,
@@ -215,15 +215,30 @@ async def stream_agent_turn(
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
 
-    stream = await _async_client.chat.completions.create(
-        model=settings.AGENT_MODEL,
-        messages=messages,
-        stream=True,
-        stream_options={"include_usage": True},
-        temperature=0.8,
-        max_tokens=200,
-        seed=seed,
-    )
+    # ── P12: rate limit 재시도 (지수 백오프 2회) ─────────────
+    _RATE_LIMIT_RETRIES = 2
+    stream = None
+    for _attempt in range(_RATE_LIMIT_RETRIES + 1):
+        try:
+            stream = await _async_client.chat.completions.create(
+                model=settings.AGENT_MODEL,
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                temperature=0.8,
+                max_tokens=200,
+                seed=seed,
+            )
+            break  # 성공
+        except OpenAIRateLimitError:
+            if _attempt == _RATE_LIMIT_RETRIES:
+                raise  # 재시도 소진 → 호출자에서 llm_rate_limit 처리
+            _delay = 1.0 * (2 ** _attempt)  # 1s, 2s
+            logger.warning(
+                "rate limit retry %d/%d in %.1fs: session=%s speaker=%s",
+                _attempt + 1, _RATE_LIMIT_RETRIES, _delay, state.session_id, speaker,
+            )
+            await asyncio.sleep(_delay)
     async for chunk in stream:
         if chunk.usage:
             prompt_tokens = chunk.usage.prompt_tokens
@@ -391,7 +406,13 @@ async def run_discussion(
 
         # ── AI 에이전트 발화 ────────────────────────────────
         else:
-            content = await stream_agent_turn(decision, state, out_queue)
+            try:
+                content = await stream_agent_turn(decision, state, out_queue)
+            except OpenAIRateLimitError:
+                logger.error("rate limit 재시도 소진: session=%s", session_id)
+                yield {"type": "error", "code": "llm_rate_limit",
+                       "message": "OpenAI 요청 한도를 초과했습니다. 잠시 후 다시 시도해 주세요."}
+                return
             state.record_ai_turn(decision.next_speaker, content)
             while not out_queue.empty():
                 yield out_queue.get_nowait()

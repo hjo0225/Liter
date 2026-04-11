@@ -138,6 +138,44 @@ def today_session_count(student_id: str = Depends(get_current_student)):
     return {"count": res.count or 0}
 
 
+@router.get("/sessions/{session_id}")
+def get_session(
+    session_id: str,
+    student_id: str = Depends(get_current_student),
+):
+    """
+    세션 상태 조회 — 새로고침 복구(P12 Scenario 4) 전용.
+
+    can_resume=True  → SSE 채널이 살아 있음 → 프론트엔드에서 "이어서 토의하기" 제공.
+    can_resume=False → 채널 없음(서버 재시작 또는 연결 만료) → "처음부터 시작" 정책.
+    """
+    from app.core.state import get_channel
+
+    res = (
+        supabase.table("sessions")
+        .select("id, student_id, status, started_at, ended_at, passage_id")
+        .eq("id", session_id)
+        .maybe_single()
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SESSION_NOT_FOUND")
+    data = res.data
+    if data["student_id"] != student_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="FORBIDDEN")
+
+    ch = get_channel(session_id)
+    can_resume = ch is not None
+
+    return {
+        "session_id": session_id,
+        "status": data["status"],
+        "can_resume": can_resume,
+        "started_at": data.get("started_at"),
+        "ended_at": data.get("ended_at"),
+    }
+
+
 @router.post("/sessions", response_model=SessionStartResponse, status_code=status.HTTP_201_CREATED)
 def start_session(student_id: str = Depends(get_current_student)):
     today = date.today().isoformat()
