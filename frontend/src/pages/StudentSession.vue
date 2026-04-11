@@ -138,25 +138,30 @@ async function handleConfirm() {
 
     <!-- ════════════════ 지문 읽기 ════════════════ -->
     <template v-if="sessionStore.phase === 'reading' && sessionStore.passage">
-      <div class="max-w-lg mx-auto px-4 pt-6 pb-28 flex flex-col gap-4">
-        <!-- 상단 -->
-        <div class="flex items-center justify-between">
-          <button
-            @click="handleExitSession"
-            class="flex items-center gap-1 text-sm font-medium transition-all"
-            style="color: #5A7AB8;"
+      <div class="max-w-lg mx-auto px-4 pt-6 pb-32 flex flex-col gap-4">
+        <!-- 홈 버튼 -->
+        <button
+          @click="handleExitSession"
+          class="self-start flex items-center gap-1 text-sm font-medium"
+          style="color: #5A7AB8;"
+        >
+          ← 홈으로
+        </button>
+
+        <!-- 메타 chip: 장르 + 난이도 (제목보다 먼저) -->
+        <div class="flex items-center gap-2">
+          <span
+            class="text-xs font-bold px-3 py-1 rounded-full"
+            style="background: #EBF0FC; color: #1B438A;"
           >
-            ← 홈으로
-          </button>
-          <div class="flex items-center gap-2">
-            <span
-              class="text-xs font-bold px-3 py-1 rounded-full"
-              style="background: #EBF0FC; color: #1B438A;"
-            >
-              {{ sessionStore.passage.genre }}
-            </span>
-            <span class="text-sm font-bold" style="color: #1B438A;">{{ difficultyStars }}</span>
-          </div>
+            {{ sessionStore.passage.genre }}
+          </span>
+          <span
+            class="text-xs font-bold px-3 py-1 rounded-full"
+            style="background: #FEF3C7; color: #92400E;"
+          >
+            {{ difficultyStars }}
+          </span>
         </div>
 
         <!-- 제목 -->
@@ -164,15 +169,15 @@ async function handleConfirm() {
           {{ sessionStore.passage.title }}
         </h1>
 
-        <div style="border-bottom: 1px solid #EBF0FC;" />
-
-        <!-- 지문 본문 -->
-        <p
-          class="text-base leading-8 whitespace-pre-wrap"
-          style="color: #081830;"
-        >
-          {{ sessionStore.passage.content }}
-        </p>
+        <!-- 지문 박스 -->
+        <div class="rounded-2xl" style="background: #F9FAFB; padding: 24px;">
+          <p
+            class="text-base whitespace-pre-wrap"
+            style="color: #4E5968; line-height: 1.8;"
+          >
+            {{ sessionStore.passage.content }}
+          </p>
+        </div>
       </div>
 
       <!-- 고정 하단 버튼 -->
