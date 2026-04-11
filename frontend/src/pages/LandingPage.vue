@@ -304,7 +304,7 @@ const router = useRouter()
 const steps = [
   { num: '01', icon: LibraryBig, title: '교사가 학급 코드 발급', desc: '회원가입 후 학급을 생성하면 6자리 고유 코드가 발급돼요.', bg: '#EBF0FC', color: '#1B438A' },
   { num: '02', icon: Smartphone, title: '학생이 코드 입력', desc: '학생은 앱에서 코드와 이름만 입력하면 바로 시작할 수 있어요.', bg: '#E8F0FD', color: '#1B438A' },
-  { num: '03', icon: Sparkles, title: 'AI와 함께 매일 학습', desc: '지문 읽기 → 객관식 → AI 토의 순서로 15~20분 세션을 진행해요.', bg: '#DDE8FC', color: '#163674' },
+  { num: '03', icon: Sparkles, title: 'AI와 함께 매일 학습', desc: '읽기 → 문제 풀기 → AI 토의 → 결과 4단계 순서로 세션이 진행돼요.', bg: '#DDE8FC', color: '#163674' },
 ]
 
 interface SessionStep {
@@ -324,7 +324,7 @@ const sessionFlow: SessionStep[] = [
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
   { isArrow: false, icon: NotebookPen, step: '단계 2', title: '객관식 문항', desc: '3지선다 3문제\n정보·추론·어휘', color: '#E8F0FD', textColor: '#1B438A', iconBg: 'rgba(255,255,255,0.7)', iconColor: '#1B438A' },
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
-  { isArrow: false, icon: MessageCircleMore, step: '단계 3', title: 'AI 그룹 토의', desc: '또래 AI 3인\n최대 10라운드', color: '#DDE8FC', textColor: '#163674', iconBg: 'rgba(255,255,255,0.72)', iconColor: '#163674' },
+  { isArrow: false, icon: MessageCircleMore, step: '단계 3', title: 'AI 그룹 토의', desc: '모더레이터·민지·준서\n주제 3개', color: '#DDE8FC', textColor: '#163674', iconBg: 'rgba(255,255,255,0.72)', iconColor: '#163674' },
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
   { isArrow: false, icon: Trophy, step: '결과', title: '점수 + streak', desc: '3종 점수 확인\nstreak 갱신', color: '#D4E1FC', textColor: '#112B5C', iconBg: 'rgba(255,255,255,0.76)', iconColor: '#112B5C' },
 ]
@@ -342,7 +342,7 @@ const teacherFeatures = [
   '학급 전체 수준 변화 추이 한눈에',
   '즉시 확인 필요 학생 자동 강조',
   '6자리 코드로 간편하게 학생 참여',
-  '지문 난이도 직접 조정 가능',
+  '오늘 학습 완료·참여 현황 한눈에',
 ]
 
 const studentFeatures = [
