@@ -196,60 +196,75 @@ async function handleConfirm() {
 
     <!-- ════════════════ 객관식 문항 ════════════════ -->
     <template v-else-if="sessionStore.phase === 'mcq' && currentQuestion">
-      <div class="max-w-lg mx-auto px-4 pt-6 pb-28 flex flex-col gap-4">
-        <!-- 헤더 -->
-        <div class="flex items-center justify-between">
-          <span class="font-black text-base" style="color: #1B438A;">
-            문제 {{ sessionStore.currentQuestionIndex + 1 }} / 3
-          </span>
-          <div class="flex items-center gap-2">
-            <span
-              class="text-xs font-bold px-3 py-1 rounded-full"
-              style="background: #EBF0FC; color: #1B438A;"
-            >
+      <div class="max-w-lg mx-auto px-4 pt-5 pb-28 flex flex-col gap-5">
+
+        <!-- 상단: dot progress(3칸) + 메타 chips -->
+        <div class="flex items-center gap-3">
+          <div class="flex gap-1.5 flex-1">
+            <div
+              v-for="n in 3"
+              :key="n"
+              class="flex-1 rounded-full"
+              :style="[
+                'height: 4px; transition: background 0.15s;',
+                n - 1 < sessionStore.currentQuestionIndex
+                  ? 'background: #16A34A;'
+                  : n - 1 === sessionStore.currentQuestionIndex
+                    ? 'background: #1B438A;'
+                    : 'background: #E2E8F0;'
+              ].join('')"
+            />
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-xs font-bold px-3 py-1 rounded-full" style="background: #EBF0FC; color: #1B438A;">
               {{ typeLabel }}
             </span>
             <span class="text-sm font-bold" style="color: #1B438A;">{{ difficultyStars }}</span>
           </div>
         </div>
 
-        <!-- 질문 -->
-        <p class="font-bold text-base leading-snug" style="color: #081830;">
-          {{ currentQuestion.text }}
-        </p>
+        <!-- 문제 번호 라벨 + 질문 -->
+        <div class="flex flex-col gap-1.5">
+          <span class="font-bold" style="font-size: 13px; color: #1B438A;">
+            문제 {{ sessionStore.currentQuestionIndex + 1 }}
+          </span>
+          <p class="font-bold text-base leading-snug" style="color: #081830;">
+            {{ currentQuestion.text }}
+          </p>
+        </div>
 
-        <!-- 선택지 -->
+        <!-- 선택지: 기본 / 선택 / 정답·오답 3상태 -->
         <div class="flex flex-col gap-2">
           <button
             v-for="(choice, i) in currentQuestion.choices"
             :key="i"
             @click="feedbackIsCorrect === null && (selectedChoice = i)"
             :disabled="feedbackIsCorrect !== null"
-            class="w-full text-left px-4 py-3.5 rounded-xl border-2 flex items-center gap-3 transition-all duration-300"
+            class="w-full text-left px-4 py-3.5 rounded-xl border-2 flex items-center gap-3"
+            style="transition: all 0.15s;"
             :style="feedbackIsCorrect !== null
               ? i === feedbackCorrectIndex
-                ? 'border-color: #16A34A; background: #DCFCE7;'
+                ? 'border-color: #16A34A; background: #DCFCE7; color: #16A34A;'
                 : i === selectedChoice && !feedbackIsCorrect
-                  ? 'border-color: #DC2626; background: #FEE2E2;'
-                  : 'border-color: #EBF0FC; background: white; opacity: 0.5;'
+                  ? 'border-color: #DC2626; background: #FEE2E2; color: #DC2626;'
+                  : 'border-color: #E2E8F0; background: white; color: #CBD5E1; opacity: 0.45;'
               : selectedChoice === i
-                ? 'border-color: #1B438A; background: #EBF0FC;'
-                : 'border-color: #EBF0FC; background: white;'"
+                ? 'border-color: #1B438A; background: #EEF3FF; color: #1B438A;'
+                : 'border-color: #EBF0FC; background: white; color: #081830;'"
           >
-            <span class="font-black text-lg shrink-0" :style="{
-              color: feedbackIsCorrect !== null
-                ? i === feedbackCorrectIndex ? '#16A34A' : i === selectedChoice ? '#DC2626' : '#93B2E8'
-                : '#1B438A',
-              width: '24px'
-            }">
-              {{ feedbackIsCorrect !== null && i === feedbackCorrectIndex ? '✓' : feedbackIsCorrect !== null && i === selectedChoice ? '✗' : choicePrefix[i] }}
+            <span class="font-black text-lg shrink-0" style="width: 24px;">
+              {{ feedbackIsCorrect !== null && i === feedbackCorrectIndex ? '✓' : feedbackIsCorrect !== null && i === selectedChoice && !feedbackIsCorrect ? '✗' : choicePrefix[i] }}
             </span>
-            <span class="text-base leading-snug" style="color: #081830;">{{ choice }}</span>
+            <span class="text-base leading-snug">{{ choice }}</span>
           </button>
         </div>
 
         <!-- 피드백 메시지 -->
-        <div v-if="feedbackIsCorrect !== null" class="text-center text-base font-bold py-1" :style="feedbackIsCorrect ? 'color: #16A34A;' : 'color: #DC2626;'">
+        <div
+          v-if="feedbackIsCorrect !== null"
+          class="text-center text-base font-bold py-1"
+          :style="feedbackIsCorrect ? 'color: #16A34A;' : 'color: #DC2626;'"
+        >
           {{ feedbackIsCorrect ? '정답이에요! 🎉' : '틀렸어요. 정답을 확인해보세요.' }}
         </div>
 
@@ -262,15 +277,16 @@ async function handleConfirm() {
         <div class="max-w-lg mx-auto flex gap-3">
           <button
             @click="handleBackToReading"
-            class="flex-1 py-3.5 rounded-2xl font-bold border-2 transition-all"
-            style="color: #1B438A; border-color: #1B438A; background: white;"
+            class="flex-1 py-3.5 rounded-2xl font-bold border-2"
+            style="color: #1B438A; border-color: #1B438A; background: white; transition: all 0.15s;"
           >
             이전 단계
           </button>
           <button
             @click="handleConfirm"
             :disabled="selectedChoice === null || submitting || feedbackIsCorrect !== null"
-            class="flex-1 py-3.5 rounded-2xl font-bold text-white transition-all"
+            class="flex-1 py-3.5 rounded-2xl font-bold text-white"
+            style="transition: all 0.15s;"
             :style="{
               background: selectedChoice !== null && !submitting && feedbackIsCorrect === null ? '#1B438A' : '#CBD5E1',
               cursor: selectedChoice !== null && !submitting && feedbackIsCorrect === null ? 'pointer' : 'not-allowed',
