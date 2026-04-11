@@ -53,7 +53,8 @@ app.add_middleware(
     allow_origins=["https://liter-psi.vercel.app", "http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Content-Type", "Authorization"],
+    # SSE 호환: EventSource가 보내는 Accept, Cache-Control, Last-Event-ID 포함
+    allow_headers=["Content-Type", "Authorization", "Accept", "Cache-Control", "Last-Event-ID"],
 )
 
 app.include_router(auth_teacher.router, prefix="/api/v1")

@@ -28,6 +28,32 @@ export const useDiscussionStore = defineStore('discussion', () => {
   let _pendingId: number | null = null    // 현재 스트리밍 중인 bubble id
   let _idleTimer: ReturnType<typeof setInterval> | null = null
 
+  // ── P8: 토큰 출력 속도 조절 (50~80ms 간격) ───────────────
+  let _tokenQueue: string[] = []
+  let _drainTimer: ReturnType<typeof setInterval> | null = null
+  let _typingTimer: ReturnType<typeof setTimeout> | null = null
+
+  function _startDrain() {
+    if (_drainTimer !== null) return
+    _drainTimer = setInterval(() => {
+      if (_tokenQueue.length === 0) return
+      const chunk = _tokenQueue.shift()!
+      if (_pendingId !== null) {
+        const b = bubbles.value.find(b => b.id === _pendingId)
+        if (b) {
+          b.isTyping = false
+          b.content += chunk
+        }
+      }
+    }, 60)  // 60ms ≈ 50~80ms 중간값
+  }
+
+  function _stopDrain() {
+    if (_drainTimer !== null) { clearInterval(_drainTimer); _drainTimer = null }
+    if (_typingTimer !== null) { clearTimeout(_typingTimer); _typingTimer = null }
+    _tokenQueue = []
+  }
+
   const _nextId = () => ++_idCounter
 
   // ── idle timer ─────────────────────────────────────────────
@@ -50,33 +76,50 @@ export const useDiscussionStore = defineStore('discussion', () => {
     error.value = null
   }
 
-  /** 1. turn_start: 빈 bubble 생성, currentTurn 초기화 */
+  /**
+   * 1. turn_start: 빈 bubble 생성, 0.5~1.5s 타이핑 인디케이터 후 토큰 drain 시작.
+   */
   function onTurnStart(speaker: Speaker, turnId: string, r: number) {
     isLoading.value = false
     _stopIdleTimer()
+    _stopDrain()
     inputEnabled.value = false
     round.value = r
 
     const id = _nextId()
     _pendingId = id
     currentTurn.value = { speaker, partial_text: '', turn_id: turnId, round: r }
-    bubbles.value.push({ id, speaker, content: '', round: r })
+    // isTyping: true → 타이핑 인디케이터 표시
+    bubbles.value.push({ id, speaker, content: '', round: r, isTyping: true })
+
+    // 0.5~1.5s 랜덤 지연 후 토큰 drain 시작
+    const delay = 500 + Math.random() * 1000
+    _typingTimer = setTimeout(() => {
+      _typingTimer = null
+      _startDrain()
+    }, delay)
   }
 
-  /** 2. token: partial_text 누적 + bubble content 갱신 */
+  /**
+   * 2. token: 큐에 적재 (drain 타이머가 꺼내서 출력).
+   */
   function onToken(text: string) {
     currentTurn.value.partial_text += text
-    if (_pendingId !== null) {
-      const b = bubbles.value.find(b => b.id === _pendingId)
-      if (b) b.content += text
-    }
+    _tokenQueue.push(text)
   }
 
-  /** 3. turn_end: bubble 확정, currentTurn 리셋 */
+  /**
+   * 3. turn_end: 큐 즉시 비우고 bubble 확정.
+   * LLM 스트림이 끝나면 남은 토큰은 한번에 반영한다.
+   */
   function onTurnEnd(fullText: string, r: number) {
+    _stopDrain()
     if (_pendingId !== null) {
       const b = bubbles.value.find(b => b.id === _pendingId)
-      if (b) b.content = fullText   // 토큰 누적과 동일하나, 드리프트 보정
+      if (b) {
+        b.content = fullText   // 드리프트 없이 완성본으로 확정
+        b.isTyping = false
+      }
       _pendingId = null
     }
     currentTurn.value = { speaker: null, partial_text: '', turn_id: null, round: r }
@@ -96,6 +139,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
     isFinal.value = true
     inputEnabled.value = false
     _stopIdleTimer()
+    _stopDrain()
   }
 
   /** 6. error: 에러 메시지 표시 */
@@ -109,6 +153,11 @@ export const useDiscussionStore = defineStore('discussion', () => {
     isLoading.value = false
     bubbles.value.push({ id: _nextId(), speaker, content, round: r })
     round.value = r
+  }
+
+  /** 8. round_change (데모 모드 전용) */
+  function onRoundChange(toRound: number) {
+    round.value = toRound
   }
 
   /** 학생 발화 추가 (로컬 즉시 반영) */
@@ -129,6 +178,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
     _idCounter = 0
     _pendingId = null
     _stopIdleTimer()
+    _stopDrain()
   }
 
   return {
@@ -148,6 +198,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
     onFinal,
     onError,
     onLegacyMessage,
+    onRoundChange,
     addUserBubble,
     reset,
   }

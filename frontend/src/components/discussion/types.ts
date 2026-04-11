@@ -5,6 +5,7 @@ export interface DisplayMessage {
   speaker: Speaker
   content: string
   round: number
+  isTyping?: boolean   // true = 타이핑 인디케이터 표시 중 (dots)
 }
 
 export const SPEAKERS: Record<Speaker, { name: string; emoji: string; color: string; bg: string; textColor: string }> = {

@@ -1,25 +1,26 @@
 /**
- * useDiscussionStream
+ * useDiscussionStream — P6 아키텍처 (지속 GET SSE + POST /turns)
  *
- * POST /student/sessions/{id}/discussion 엔드포인트의 SSE 스트림을 관리한다.
+ * 연결 구조:
+ *   GET  /sessions/{id}/discussion?token=JWT  → 세션 전체 지속 EventSource
+ *   POST /sessions/{id}/discussion/turns       → 학생 발화 단독 전송 (202)
  *
- * 설계 메모:
- *  - 브라우저의 EventSource는 GET만 지원하므로 fetch + ReadableStream 방식 사용.
- *  - 네트워크 단절 감지 시 3회까지 지수 백오프 재연결 (1s → 2s → 4s).
- *  - 컴포넌트 unmount 시 AbortController로 진행 중인 fetch를 취소.
+ * EventSource를 직접 사용하지 않고 fetch + ReadableStream을 쓰는 이유:
+ *   - CORS preflight 없이 토큰을 URL에 노출하기 싫을 경우 대안 가능
+ *   - 재연결 시 정확한 타이밍 제어 (지수 백오프 1s → 2s → 4s)
  *
- * 수신하는 11가지 이벤트 유형:
- *  1. turn_start    — AI 발화 시작
- *  2. token         — 텍스트 토큰 단위
- *  3. turn_end      — AI 발화 완료
- *  4. wait_for_user — 학생 입력 대기
- *  5. is_final      — 토의 세션 종료
- *  6. error         — 서버 측 오류
- *  7. legacy_msg    — 구형 단일 이벤트 (moderator close 발화)
- *  8. heartbeat     — keepalive (무시)
- *  9. ping          — keepalive (무시)
- * 10. connected     — 연결 시작 알림 (무시)
- * 11. unknown       — 미지 이벤트 (무시)
+ * 처리하는 이벤트 유형 (11가지):
+ *  1. event=turn_start      — AI 발화 시작 (스트리밍)
+ *  2. event=token           — 텍스트 청크
+ *  3. event=turn_end        — AI 발화 완료 (스트리밍)
+ *  4. type=turn_end         — 마무리 발화 (close, 단일 완성본)
+ *  5. type=waiting_for_user — 학생 입력 대기
+ *  6. type=is_final         — 세션 종료
+ *  7. type=scores           — 점수 데이터 (무시: /end 엔드포인트에서 처리)
+ *  8. type=round_change     — 라운드 전환 (데모 모드)
+ *  9. type=heartbeat        — keepalive (무시)
+ * 10. type=error            — 서버 오류
+ * 11. unknown               — 미지 이벤트 (무시)
  */
 
 import { onUnmounted } from 'vue'
@@ -38,39 +39,51 @@ export function useDiscussionStream(sessionId: string) {
   let retryCount = 0
   let retryTimer: ReturnType<typeof setTimeout> | null = null
   let destroyed = false
-  let _retryContent = ''   // 재연결 시 재전송할 마지막 userContent
 
-  // ── SSE 라인 디스패처 ─────────────────────────────────────────
+  // ── 이벤트 디스패처 ──────────────────────────────────────
   function dispatch(raw: string) {
     let ev: Record<string, unknown>
     try { ev = JSON.parse(raw) } catch { return }
 
-    if (ev.event === 'turn_start') {
-      // 1
+    const evType = ev.event as string | undefined   // 스트리밍 turn 이벤트
+    const msgType = ev.type as string | undefined   // 오케스트레이터 제어 이벤트
+
+    if (evType === 'turn_start') {
+      // 1. 스트리밍 발화 시작
       ds.onTurnStart(ev.speaker as any, ev.turn_id as string, ev.round as number)
-    } else if (ev.event === 'token') {
-      // 2
+
+    } else if (evType === 'token') {
+      // 2. 텍스트 청크
       ds.onToken(ev.text as string)
-    } else if (ev.event === 'turn_end') {
-      // 3
+
+    } else if (evType === 'turn_end') {
+      // 3. 스트리밍 발화 완료
       ds.onTurnEnd(ev.full_text as string, ev.round as number)
-    } else if (ev.next_speaker === 'user') {
-      // 4: wait_for_user
-      ds.onWaitForUser(ev.round as number)
-    } else if (ev.is_final) {
-      // 5
-      ds.onFinal()
-    } else if (ev.error) {
-      // 6
-      ds.onError(typeof ev.error === 'string' ? ev.error : undefined)
-    } else if (ev.speaker && ev.content) {
-      // 7: legacy close message
+
+    } else if (msgType === 'turn_end') {
+      // 4. close 마무리 발화 (단일 완성본 — content 필드 사용)
       ds.onLegacyMessage(ev.speaker as any, ev.content as string, ev.round as number)
+
+    } else if (msgType === 'waiting_for_user') {
+      // 5. 학생 입력 대기
+      ds.onWaitForUser(ev.round as number)
+
+    } else if (msgType === 'is_final') {
+      // 6. 세션 종료
+      ds.onFinal()
+
+    } else if (msgType === 'error') {
+      // 10. 서버 오류
+      ds.onError(typeof ev.message === 'string' ? ev.message : undefined)
+
+    } else if (msgType === 'round_change') {
+      // 8. 데모 모드 라운드 전환 → round 갱신
+      ds.onRoundChange(ev.to_round as number)
     }
-    // 8~11: heartbeat / ping / connected / unknown → 무시
+    // 7(scores) / 9(heartbeat) / 11(unknown) → 무시
   }
 
-  // ── 스트림 읽기 ───────────────────────────────────────────────
+  // ── SSE 스트림 리더 ──────────────────────────────────────
   async function _readStream(response: Response): Promise<'done' | 'network_error'> {
     if (!response.body) return 'network_error'
     const reader = response.body.getReader()
@@ -100,31 +113,24 @@ export function useDiscussionStream(sessionId: string) {
     }
   }
 
-  // ── 연결 ──────────────────────────────────────────────────────
-  async function connect(userContent = '') {
+  // ── GET SSE 연결 ──────────────────────────────────────────
+  async function connect() {
     if (destroyed) return
-    _retryContent = userContent
 
     abort?.abort()
     abort = new AbortController()
     ds.startLoading()
 
-    const token = studentStore.token
-    let response: Response
+    const token = studentStore.token ?? ''
+    const url = `${API_BASE_URL}/student/sessions/${sessionId}/discussion?token=${encodeURIComponent(token)}`
 
+    let response: Response
     try {
-      response = await fetch(
-        `${API_BASE_URL}/student/sessions/${sessionId}/discussion`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ content: userContent }),
-          signal: abort.signal,
-        },
-      )
+      response = await fetch(url, {
+        method: 'GET',
+        headers: { Accept: 'text/event-stream' },
+        signal: abort.signal,
+      })
     } catch (e) {
       if ((e as Error).name === 'AbortError') return
       _scheduleRetry()
@@ -144,7 +150,7 @@ export function useDiscussionStream(sessionId: string) {
     }
   }
 
-  // ── 지수 백오프 재연결 ────────────────────────────────────────
+  // ── 지수 백오프 재연결 ───────────────────────────────────
   function _scheduleRetry() {
     if (destroyed || retryCount >= MAX_RETRIES) {
       ds.onError('연결이 끊어졌어요. 새로고침 후 다시 시도해주세요.')
@@ -152,10 +158,41 @@ export function useDiscussionStream(sessionId: string) {
     }
     const delay = BACKOFF_BASE_MS * Math.pow(2, retryCount)  // 1s, 2s, 4s
     retryCount++
-    retryTimer = setTimeout(() => { if (!destroyed) connect(_retryContent) }, delay)
+    retryTimer = setTimeout(() => { if (!destroyed) connect() }, delay)
   }
 
-  // ── 연결 해제 ─────────────────────────────────────────────────
+  // ── 학생 발화 전송 (POST /discussion/turns) ──────────────
+  async function sendTurn(text: string): Promise<boolean> {
+    const token = studentStore.token
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/student/sessions/${sessionId}/discussion/turns`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ text, client_ts: new Date().toISOString() }),
+        },
+      )
+      if (res.status === 409) {
+        // 아직 학생 차례가 아님 — 조용히 무시
+        return false
+      }
+      if (!res.ok) {
+        ds.onError('발화 전송에 실패했어요. 다시 시도해주세요.')
+        return false
+      }
+      ds.startLoading()   // 다음 AI 턴이 올 때까지 로딩 표시
+      return true
+    } catch {
+      ds.onError('네트워크 오류가 발생했어요.')
+      return false
+    }
+  }
+
+  // ── 연결 해제 ────────────────────────────────────────────
   function disconnect() {
     destroyed = true
     abort?.abort()
@@ -164,5 +201,5 @@ export function useDiscussionStream(sessionId: string) {
 
   onUnmounted(disconnect)
 
-  return { connect, disconnect }
+  return { connect, sendTurn, disconnect }
 }

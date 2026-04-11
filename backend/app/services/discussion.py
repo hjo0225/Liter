@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -198,7 +199,7 @@ async def stream_agent_turn(
     ]
 
     turn_id = str(uuid.uuid4())
-    await out_queue.put({"event": "turn_start", "speaker": speaker, "turn_id": turn_id, "round": state.round})
+    await out_queue.put({"type": "turn_start", "speaker": speaker, "turn_id": turn_id, "round": state.round})
 
     full_text = ""
     t0 = time.time()
@@ -214,10 +215,10 @@ async def stream_agent_turn(
         delta = chunk.choices[0].delta.content
         if delta:
             full_text += delta
-            await out_queue.put({"event": "token", "speaker": speaker, "text": delta, "turn_id": turn_id})
+            await out_queue.put({"type": "token", "speaker": speaker, "text": delta, "turn_id": turn_id})
 
     latency_ms = int((time.time() - t0) * 1000)
-    await out_queue.put({"event": "turn_end", "speaker": speaker, "full_text": full_text, "turn_id": turn_id, "round": state.round})
+    await out_queue.put({"type": "turn_end", "speaker": speaker, "content": full_text, "turn_id": turn_id, "round": state.round})
 
     _save_message(
         session_id=state.session_id,
@@ -288,20 +289,28 @@ async def run_discussion(
 
     # ── 3. Director Loop ───────────────────────────────────
     out_queue: asyncio.Queue = asyncio.Queue()
+    _is_first_turn = True
 
     while not state.is_final:
+        # P8: 첫 턴 제외, 다음 turn_start 전 0.5~1.2s 랜덤 지연 (사람 대화 리듬)
+        if not _is_first_turn:
+            await asyncio.sleep(0.5 + random.random() * 0.7)
+        _is_first_turn = False
+
         decision = await llm_decide(_make_director_input(state))
 
         # ── 학생 대기 ──────────────────────────────────────
         if decision.next_speaker == "wait_for_user":
             if state.demo_mode:
                 # 데모 모드: 학생 턴 건너뛰고 다음 라운드
+                prev_round = state.round
                 state.advance_round()
+                yield {"type": "round_change", "from_round": prev_round, "to_round": state.round}
                 continue
-            yield {"next_speaker": "user", "round": state.round, "is_final": False}
+            yield {"type": "waiting_for_user", "round": state.round}
             return
 
-        # ── 종료: 사회자 마무리 발언 + is_final ─────────────
+        # ── 종료: 사회자 마무리 발언 + scores + is_final ────
         elif decision.next_speaker == "close":
             loop = asyncio.get_event_loop()
             t0 = loop.time()
@@ -319,8 +328,24 @@ async def run_discussion(
             )
             _log_llm_call(session_id=session_id, agent="moderator_close", latency_ms=latency_ms)
 
-            yield {"speaker": "moderator", "content": close_content, "round": MAX_DISCUSSION_TOPICS}
-            yield {"is_final": True}
+            turn_id = str(uuid.uuid4())
+            yield {"type": "turn_end", "speaker": "moderator", "content": close_content,
+                   "turn_id": turn_id, "round": MAX_DISCUSSION_TOPICS}
+
+            # 점수 계산 → scores 이벤트
+            try:
+                from app.agents.feedback_agent import analyze_discussion
+                user_msgs = [t.content for t in state.history if t.speaker == "user"]
+                qr = [
+                    {"question_type": q["question_type"], "is_correct": q.get("is_correct")}
+                    for q in context.get("question_results", [])
+                ]
+                scores_data = await asyncio.to_thread(analyze_discussion, user_msgs, qr)
+                yield {"type": "scores", **scores_data}
+            except Exception:
+                logger.warning("scores 계산 실패: session_id=%s", session_id, exc_info=True)
+
+            yield {"type": "is_final"}
             state.is_final = True
             return
 

@@ -19,9 +19,11 @@ const studentStore = useStudentStore()
 const ds = useDiscussionStore()
 
 const inputText = ref('')
+const isSending = ref(false)  // POST /turns 전송 중 (이중 제출 방지)
+
 const studentName = computed(() => studentStore.student?.name ?? '나')
 
-const { connect } = useDiscussionStream(sessionStore.sessionId ?? '')
+const { connect, sendTurn } = useDiscussionStream(sessionStore.sessionId ?? '')
 
 // ── abandon beacon ─────────────────────────────────────────────
 function sendAbandonBeacon() {
@@ -37,7 +39,7 @@ onMounted(() => {
   ds.reset()
   window.addEventListener('beforeunload', sendAbandonBeacon)
   window.addEventListener('pagehide', sendAbandonBeacon)
-  connect('')
+  connect()  // GET SSE 지속 연결 시작
 })
 
 onUnmounted(() => {
@@ -50,17 +52,18 @@ watch(() => ds.isFinal, (val) => { if (val) setTimeout(endSession, 1500) })
 
 // ── 학생 발화 전송 ─────────────────────────────────────────────
 async function handleSend() {
-  if (loading.value) return
+  if (isSending.value) return
   const content = inputText.value.trim()
   if (!content || !ds.inputEnabled || ds.isFinal) return
 
+  isSending.value = true
   ds.addUserBubble(content, ds.round)
   sessionStore.addDiscussionMessage({ speaker: 'user', content, round: ds.round })
   inputText.value = ''
-  await connect(content)
-}
 
-const loading = computed(() => ds.isLoading)
+  await sendTurn(content)   // POST /discussion/turns → SSE 오케스트레이터 깨우기
+  isSending.value = false
+}
 
 async function endSession() {
   try {
