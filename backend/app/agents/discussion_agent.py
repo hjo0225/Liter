@@ -31,8 +31,8 @@ def _load_prompt(name: str, **kwargs: str) -> str:
     except FileNotFoundError:
         logger.error("Prompt file not found: %s", path)
         raise
-    if kwargs:
-        raw = raw.format(**kwargs)
+    for key, value in kwargs.items():
+        raw = raw.replace(f"{{{key}}}", value)
     return raw
 
 
