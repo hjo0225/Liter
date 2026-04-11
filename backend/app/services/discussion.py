@@ -221,7 +221,7 @@ async def stream_agent_turn(
 
     if is_first_turn and speaker == "moderator":
         # 세션 첫 발화: 항상 moderator가 주제 소개 (apply_guards 보장)
-        instruction = f"위 지문을 바탕으로 토의 주제를 소개하고, 민지에게 의견을 물어보세요. {CHAR_LIMIT}"
+        instruction = f"자기소개 없이 바로 위 지문을 바탕으로 토의 주제를 소개하고, 민지에게 의견을 물어보세요. {CHAR_LIMIT}"
     elif is_first_turn:
         # 혹시 moderator가 아닌 경우 안전 폴백
         instruction = f"위 지문을 바탕으로 자신의 의견을 말씀하세요. {CHAR_LIMIT}"
