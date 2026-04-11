@@ -36,16 +36,26 @@ onMounted(() => {
     router.replace('/student/home')
     return
   }
-  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('beforeunload', sendAbandonBeacon)
+  window.addEventListener('pagehide', sendAbandonBeacon)
   callDiscussion('')
 })
 
 onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('beforeunload', sendAbandonBeacon)
+  window.removeEventListener('pagehide', sendAbandonBeacon)
 })
 
-function handleBeforeUnload() {
-  void abandonSession(true)
+function sendAbandonBeacon() {
+  if (!sessionStore.sessionId || isDone.value) return
+  const blob = new Blob(
+    [JSON.stringify({ token: studentStore.token ?? '' })],
+    { type: 'application/json' },
+  )
+  navigator.sendBeacon(
+    `${API_BASE_URL}/student/sessions/${sessionStore.sessionId}/abandon`,
+    blob,
+  )
 }
 
 async function callDiscussion(userContent: string) {
@@ -129,17 +139,16 @@ async function callDiscussion(userContent: string) {
   }
 }
 
-async function abandonSession(keepalive = false) {
+async function abandonSession() {
   if (!sessionStore.sessionId || isDone.value) return
   const token = studentStore.token
   try {
     await fetch(`${API_BASE_URL}/student/sessions/${sessionStore.sessionId}`, {
       method: 'DELETE',
-      keepalive,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
   } catch {
-    // 페이지 이탈 중 요청 실패는 무시
+    // 명시적 이탈 요청 실패는 무시
   }
 }
 

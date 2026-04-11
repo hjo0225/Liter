@@ -22,8 +22,10 @@ class SessionStartResponse(BaseModel):
 
 
 class AnswerSubmitRequest(BaseModel):
-    question_index: int   # 1~3
-    selected_index: int   # 0~2
+    question_index: int        # 1~3
+    selected_index: int        # 0~2
+    shown_at: str | None = None    # 클라이언트 측정 - 문제 노출 시각 (ISO 8601)
+    answered_at: str | None = None # 클라이언트 측정 - 선택 완료 시각 (ISO 8601)
 
 
 class AnswerSubmitResponse(BaseModel):

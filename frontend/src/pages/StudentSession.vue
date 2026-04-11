@@ -16,6 +16,7 @@ const submitting = ref(false)
 const answerError = ref<string | null>(null)
 const feedbackCorrectIndex = ref<number | null>(null)
 const feedbackIsCorrect = ref<boolean | null>(null)
+const questionShownAt = ref<string | null>(null)
 
 const currentQuestion = computed(() => sessionStore.questions[sessionStore.currentQuestionIndex])
 
@@ -24,6 +25,7 @@ watch(() => sessionStore.currentQuestionIndex, () => {
   answerError.value = null
   feedbackCorrectIndex.value = null
   feedbackIsCorrect.value = null
+  questionShownAt.value = new Date().toISOString()
 })
 
 // ──────────────────── 헬퍼 ────────────────────
@@ -44,8 +46,16 @@ const typeLabel = computed(() => {
 const choicePrefix = ['①', '②', '③']
 
 // ──────────────────── 이탈 감지 ────────────────────
-function handleBeforeUnload() {
-  void abandonSession(true)
+function sendAbandonBeacon() {
+  if (!sessionStore.sessionId) return
+  const blob = new Blob(
+    [JSON.stringify({ token: studentStore.token ?? '' })],
+    { type: 'application/json' },
+  )
+  navigator.sendBeacon(
+    `${API_BASE_URL}/student/sessions/${sessionStore.sessionId}/abandon`,
+    blob,
+  )
 }
 
 onMounted(() => {
@@ -53,30 +63,32 @@ onMounted(() => {
     router.replace('/student/home')
     return
   }
-  window.addEventListener('beforeunload', handleBeforeUnload)
+  window.addEventListener('beforeunload', sendAbandonBeacon)
+  window.addEventListener('pagehide', sendAbandonBeacon)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.removeEventListener('beforeunload', sendAbandonBeacon)
+  window.removeEventListener('pagehide', sendAbandonBeacon)
 })
 
-async function abandonSession(keepalive = false) {
+async function abandonSession() {
   if (!sessionStore.sessionId) return
   const token = studentStore.token
   try {
     await fetch(`${API_BASE_URL}/student/sessions/${sessionStore.sessionId}`, {
       method: 'DELETE',
-      keepalive,
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
   } catch {
-    // 페이지 이탈 중 요청 실패는 무시
+    // 명시적 이탈 요청 실패는 무시
   }
 }
 
 // ──────────────────── 지문 읽기 액션 ────────────────────
 function handleFinishedReading() {
   sessionStore.goToMcq()
+  questionShownAt.value = new Date().toISOString()
 }
 
 function handleBackToReading() {
@@ -100,6 +112,8 @@ async function handleConfirm() {
     const { data } = await apiClient.post(`/student/sessions/${sessionStore.sessionId}/answer`, {
       question_index: currentQuestion.value.index,
       selected_index: selectedChoice.value,
+      shown_at: questionShownAt.value,
+      answered_at: new Date().toISOString(),
     })
     sessionStore.recordAnswer(sessionStore.currentQuestionIndex, selectedChoice.value)
 

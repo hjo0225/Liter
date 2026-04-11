@@ -2,10 +2,13 @@ import logging
 import random
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from jose import JWTError, jwt
+from pydantic import BaseModel
 
 from app.agents.diagnosis_agent import diagnose_student
 from app.agents.passage_agent import generate_passage_and_questions
+from app.core.config import settings
 from app.core.constants import DAILY_SESSION_LIMIT
 from app.core.deps import get_current_student
 from app.core.supabase import supabase
@@ -324,10 +327,15 @@ def submit_answer(
     is_correct = body.selected_index == correct_index
 
     # 4. question_results UPDATE
-    supabase.table("question_results").update({
+    update_payload: dict = {
         "selected_index": body.selected_index,
         "is_correct": is_correct,
-    }).eq("id", qr_res.data["id"]).execute()
+    }
+    if body.shown_at:
+        update_payload["shown_at"] = body.shown_at
+    if body.answered_at:
+        update_payload["answered_at"] = body.answered_at
+    supabase.table("question_results").update(update_payload).eq("id", qr_res.data["id"]).execute()
 
     # 5. 3문제 모두 답했는지 확인 → 첫 세션이면 진단 실행
     answered_res = (
@@ -388,6 +396,59 @@ def abandon_session(
     if session_data["student_id"] != student_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="FORBIDDEN")
     if session_data["status"] == "in_progress":
-        supabase.table("sessions").update({"status": "abandoned"}).eq("id", session_id).execute()
+        supabase.table("sessions").update({
+            "status": "abandoned",
+            "abandoned_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", session_id).execute()
 
     return {"ok": True}
+
+
+class _AbandonBeaconBody(BaseModel):
+    token: str = ""
+
+
+@router.post("/sessions/{session_id}/abandon", status_code=204)
+def abandon_session_beacon(
+    session_id: str,
+    body: _AbandonBeaconBody,
+):
+    """navigator.sendBeacon 전용 이탈 처리.
+
+    sendBeacon 은 커스텀 헤더를 지원하지 않으므로
+    Authorization 대신 body.token 으로 학생 JWT 를 받는다.
+    """
+    # 토큰 검증
+    try:
+        payload = jwt.decode(
+            body.token,
+            settings.JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+        if payload.get("type") != "student":
+            return Response(status_code=403)
+        student_id: str | None = payload.get("sub")
+        if not student_id:
+            return Response(status_code=403)
+    except JWTError:
+        return Response(status_code=401)
+
+    session_res = (
+        supabase.table("sessions")
+        .select("id, student_id, status")
+        .eq("id", session_id)
+        .maybe_single()
+        .execute()
+    )
+    if not session_res.data:
+        return Response(status_code=204)
+    if session_res.data["student_id"] != student_id:
+        return Response(status_code=403)
+    if session_res.data["status"] == "in_progress":
+        supabase.table("sessions").update({
+            "status": "abandoned",
+            "abandoned_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", session_id).execute()
+
+    return Response(status_code=204)
