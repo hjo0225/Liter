@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from app.core.config import settings
 from app.core.deps import get_current_student
+from app.core.llm_logging import log_session_event
 from app.core.state import get_channel
 from app.core.supabase import supabase
 
@@ -72,12 +73,12 @@ async def submit_turn(
             detail="SESSION_NOT_IN_PROGRESS",
         )
 
-    # ── 2. 채널 · 대기 상태 확인 ─────────────────────────
+    # ── 2. 채널 확인 (P9: waiting_for_user 여부 무관하게 항상 허용) ─
     ch = get_channel(session_id)
-    if ch is None or not ch.waiting_for_user:
+    if ch is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="NOT_WAITING_FOR_USER",
+            detail="NO_ACTIVE_SESSION",
         )
 
     # ── 3. OpenAI Moderation ──────────────────────────────
@@ -104,14 +105,23 @@ async def submit_turn(
     )
     user_round = last_res.data[0]["round"] if last_res.data else 1
 
-    supabase.table("messages").insert({
+    row: dict = {
         "session_id": session_id,
         "speaker": "user",
         "content": body.text.strip(),
         "round": user_round,
         "role": "user",
         "server_ts": datetime.now(timezone.utc).isoformat(),
-    }).execute()
+    }
+    if body.client_ts:
+        row["client_ts"] = body.client_ts
+    supabase.table("messages").insert(row).execute()
+
+    log_session_event(session_id, "user_turn", {
+        "round": user_round,
+        "length": len(body.text.strip()),
+        "client_ts": body.client_ts,
+    })
 
     # ── 5. 오케스트레이터 깨우기 ─────────────────────────
     ch.queue.put_nowait({"text": body.text.strip(), "client_ts": body.client_ts})

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { useStudentStore } from '@/stores/student'
@@ -22,6 +22,7 @@ const inputText = ref('')
 const isSending = ref(false)  // POST /turns 전송 중 (이중 제출 방지)
 
 const studentName = computed(() => studentStore.student?.name ?? '나')
+const canInterrupt = computed(() => ds.canInterrupt)
 
 const { connect, sendTurn } = useDiscussionStream(sessionStore.sessionId ?? '')
 
@@ -54,14 +55,17 @@ watch(() => ds.isFinal, (val) => { if (val) setTimeout(endSession, 1500) })
 async function handleSend() {
   if (isSending.value) return
   const content = inputText.value.trim()
-  if (!content || !ds.inputEnabled || ds.isFinal) return
+  if (!content || ds.isFinal) return
+
+  const isInterrupt = canInterrupt.value && !ds.inputEnabled
+  if (!isInterrupt && !ds.inputEnabled) return   // 명시적 대기도 아니고 끼어들기도 아님
 
   isSending.value = true
-  ds.addUserBubble(content, ds.round)
+  ds.addUserBubble(content, ds.round, isInterrupt)
   sessionStore.addDiscussionMessage({ speaker: 'user', content, round: ds.round })
   inputText.value = ''
 
-  await sendTurn(content)   // POST /discussion/turns → SSE 오케스트레이터 깨우기
+  await sendTurn(content, isInterrupt)   // POST /discussion/turns
   isSending.value = false
 }
 
@@ -97,6 +101,7 @@ async function endSession() {
     <DiscussionInput
       v-model="inputText"
       :waiting-for-user="ds.inputEnabled"
+      :interrupt-enabled="canInterrupt"
       :is-done="ds.isFinal"
       :idle-seconds="ds.userIdleSeconds"
       @send="handleSend"

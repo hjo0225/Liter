@@ -87,8 +87,12 @@ export function useDiscussionStream(sessionId: string) {
     } else if (msgType === 'user_skip') {
       // 11. 90초 초과 자동 skip → 입력창 닫기
       ds.onUserSkip()
+
+    } else if (msgType === 'user_input') {
+      // P9. 소프트 인터럽트 서버 확인 (말풍선은 addUserBubble에서 이미 표시)
+      ds.onUserInput(ev.text as string, ev.round as number)
     }
-    // 7(scores) / 9(heartbeat) / 12(unknown) → 무시
+    // 7(scores) / 9(heartbeat) / unknown → 무시
   }
 
   // ── SSE 스트림 리더 ──────────────────────────────────────
@@ -169,8 +173,11 @@ export function useDiscussionStream(sessionId: string) {
     retryTimer = setTimeout(() => { if (!destroyed) connect() }, delay)
   }
 
-  // ── 학생 발화 전송 (POST /discussion/turns) ──────────────
-  async function sendTurn(text: string): Promise<boolean> {
+  /**
+   * 학생 발화 전송 (POST /discussion/turns).
+   * isInterrupt=true → 소프트 인터럽트: 로딩 표시 X (AI가 아직 발화 중)
+   */
+  async function sendTurn(text: string, isInterrupt = false): Promise<boolean> {
     const token = studentStore.token
     try {
       const res = await fetch(
@@ -185,14 +192,16 @@ export function useDiscussionStream(sessionId: string) {
         },
       )
       if (res.status === 409) {
-        // 아직 학생 차례가 아님 — 조용히 무시
+        // SSE 세션 없음 — 조용히 무시
         return false
       }
       if (!res.ok) {
         ds.onError('발화 전송에 실패했어요. 다시 시도해주세요.')
         return false
       }
-      ds.startLoading()   // 다음 AI 턴이 올 때까지 로딩 표시
+      if (!isInterrupt) {
+        ds.startLoading()   // 명시적 턴: 다음 AI 응답까지 로딩 표시
+      }
       return true
     } catch {
       ds.onError('네트워크 오류가 발생했어요.')

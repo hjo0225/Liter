@@ -23,6 +23,7 @@ from pydantic import BaseModel, field_validator
 
 from app.core.config import settings
 from app.core.constants import MAX_DISCUSSION_TOPICS
+from app.core.llm_logging import calc_cost
 from app.core.supabase import supabase
 
 logger = logging.getLogger("uvicorn.error")
@@ -30,7 +31,7 @@ logger = logging.getLogger("uvicorn.error")
 _client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 ValidSpeaker = Literal["moderator", "peer_a", "peer_b", "wait_for_user", "close"]
-ValidIntent = Literal["challenge", "agree", "ask_user", "summarize", "redirect", "nudge"]
+ValidIntent = Literal["challenge", "agree", "ask_user", "summarize", "redirect", "nudge", "acknowledge"]
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -51,6 +52,8 @@ class DirectorInput(BaseModel):
     weak_areas: list[str] = []
     demo_mode: bool = False
     max_rounds: int = MAX_DISCUSSION_TOPICS
+    interrupted_by_user: bool = False   # 학생 끼어들기 발생
+    interrupt_text: str = ""            # 끼어든 학생 발화 내용
 
 
 class DirectorDecision(BaseModel):
@@ -72,7 +75,7 @@ class DirectorDecision(BaseModel):
     @field_validator("intent", mode="before")
     @classmethod
     def _coerce_intent(cls, v: object) -> str:
-        allowed = {"challenge", "agree", "ask_user", "summarize", "redirect", "nudge"}
+        allowed = {"challenge", "agree", "ask_user", "summarize", "redirect", "nudge", "acknowledge"}
         return str(v) if str(v) in allowed else "summarize"
 
 
@@ -95,6 +98,13 @@ challenge | agree | ask_user | summarize | redirect | nudge
 
 【라운드당 권장 순서】
 moderator → peer_a → peer_b → wait_for_user → (다음 라운드)
+
+【끼어들기 처리】
+interrupted_by_user=true 이면 학생이 AI 발화 도중 끼어든 상황이다.
+- interrupt_text를 확인해 학생 발언 내용을 파악한다.
+- last_speaker(방금 발화한 AI) 또는 moderator가 학생 발언에 자연스럽게 반응하도록 선택한다.
+- intent는 반드시 "acknowledge"로 설정하고 target은 "user"로 설정한다.
+- 이 경우 wait_for_user는 절대 선택하지 말 것.
 
 【절대 금지】
 - 연속으로 같은 발화자 선택
@@ -172,6 +182,8 @@ async def decide(inp: DirectorInput) -> DirectorDecision:
     """
     t0 = time.time()
     decision: DirectorDecision
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
     try:
         resp = await _client.chat.completions.create(
@@ -189,13 +201,16 @@ async def decide(inp: DirectorInput) -> DirectorDecision:
         )
         raw = resp.choices[0].message.content or "{}"
         decision = DirectorDecision.model_validate_json(raw)
+        if resp.usage:
+            prompt_tokens = resp.usage.prompt_tokens
+            completion_tokens = resp.usage.completion_tokens
     except Exception:
         logger.warning("Director LLM 실패 → rule-based 폴백", exc_info=True)
         decision = _rule_based_fallback(inp)
 
     decision = apply_guards(decision, inp)
     latency_ms = int((time.time() - t0) * 1000)
-    await _save_director_call(inp, decision, latency_ms)
+    await _save_director_call(inp, decision, latency_ms, prompt_tokens, completion_tokens)
     return decision
 
 
@@ -224,17 +239,28 @@ async def _save_director_call(
     inp: DirectorInput,
     decision: DirectorDecision,
     latency_ms: int,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
 ) -> None:
     try:
+        row: dict = {
+            "session_id": inp.session_id,
+            "round": inp.round,
+            "input_state": inp.model_dump(),
+            "decision": decision.model_dump(),
+            "latency_ms": latency_ms,
+            "model": settings.DIRECTOR_MODEL,
+        }
+        if prompt_tokens is not None:
+            row["prompt_tokens"] = prompt_tokens
+        if completion_tokens is not None:
+            row["completion_tokens"] = completion_tokens
+        if prompt_tokens is not None and completion_tokens is not None:
+            cost = calc_cost(settings.DIRECTOR_MODEL, prompt_tokens, completion_tokens)
+            if cost is not None:
+                row["cost_usd"] = cost
         await asyncio.to_thread(
-            lambda: supabase.table("director_calls").insert({
-                "session_id": inp.session_id,
-                "round": inp.round,
-                "input_state": inp.model_dump(),
-                "decision": decision.model_dump(),
-                "latency_ms": latency_ms,
-                "model": settings.DIRECTOR_MODEL,
-            }).execute()
+            lambda: supabase.table("director_calls").insert(row).execute()
         )
     except Exception:
         logger.warning("director_calls 저장 실패", exc_info=True)

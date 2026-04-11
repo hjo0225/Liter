@@ -28,6 +28,8 @@ from app.agents.discussion_agent import (
 )
 from app.core.config import settings
 from app.core.constants import MAX_DISCUSSION_TOPICS
+from app.core.llm_logging import alog_llm_call
+from app.core.state import get_channel
 from app.core.supabase import supabase
 from app.services.director import DirectorDecision, DirectorInput, decide as llm_decide
 
@@ -142,7 +144,11 @@ class DiscussionState:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-def _make_director_input(state: DiscussionState) -> DirectorInput:
+def _make_director_input(
+    state: DiscussionState,
+    interrupted_by_user: bool = False,
+    interrupt_text: str = "",
+) -> DirectorInput:
     """DiscussionState → DirectorInput 변환."""
     recent = state.history[-5:]
     return DirectorInput(
@@ -155,6 +161,8 @@ def _make_director_input(state: DiscussionState) -> DirectorInput:
         all_correct=state.context.get("all_correct", False),
         weak_areas=state.context.get("weak_areas", []),
         demo_mode=state.demo_mode,
+        interrupted_by_user=interrupted_by_user,
+        interrupt_text=interrupt_text,
     )
 
 
@@ -203,19 +211,28 @@ async def stream_agent_turn(
 
     full_text = ""
     t0 = time.time()
+    seed = random.randint(0, 2 ** 31 - 1)
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
     stream = await _async_client.chat.completions.create(
         model=settings.AGENT_MODEL,
         messages=messages,
         stream=True,
+        stream_options={"include_usage": True},
         temperature=0.8,
         max_tokens=200,
+        seed=seed,
     )
     async for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            full_text += delta
-            await out_queue.put({"type": "token", "speaker": speaker, "text": delta, "turn_id": turn_id})
+        if chunk.usage:
+            prompt_tokens = chunk.usage.prompt_tokens
+            completion_tokens = chunk.usage.completion_tokens
+        if chunk.choices:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                full_text += delta
+                await out_queue.put({"type": "token", "speaker": speaker, "text": delta, "turn_id": turn_id})
 
     latency_ms = int((time.time() - t0) * 1000)
     await out_queue.put({"type": "turn_end", "speaker": speaker, "content": full_text, "turn_id": turn_id, "round": state.round})
@@ -226,8 +243,18 @@ async def stream_agent_turn(
         content=full_text,
         round_num=state.round,
         role="assistant",
+        intent=decision.intent,
+        target=decision.target,
     )
-    _log_llm_call(session_id=state.session_id, agent=speaker, latency_ms=latency_ms)
+    await alog_llm_call(
+        session_id=state.session_id,
+        agent=speaker,
+        model=settings.AGENT_MODEL,
+        latency_ms=latency_ms,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        seed=seed,
+    )
 
     return full_text
 
@@ -290,6 +317,7 @@ async def run_discussion(
     # ── 3. Director Loop ───────────────────────────────────
     out_queue: asyncio.Queue = asyncio.Queue()
     _is_first_turn = True
+    pending_interrupt: str | None = None  # P9: 소프트 인터럽트 대기 텍스트
 
     while not state.is_final:
         # P8: 첫 턴 제외, 다음 turn_start 전 0.5~1.2s 랜덤 지연 (사람 대화 리듬)
@@ -297,7 +325,14 @@ async def run_discussion(
             await asyncio.sleep(0.5 + random.random() * 0.7)
         _is_first_turn = False
 
-        decision = await llm_decide(_make_director_input(state))
+        decision = await llm_decide(
+            _make_director_input(
+                state,
+                interrupted_by_user=pending_interrupt is not None,
+                interrupt_text=pending_interrupt or "",
+            )
+        )
+        pending_interrupt = None  # 소비 완료
 
         # ── 학생 대기 ──────────────────────────────────────
         if decision.next_speaker == "wait_for_user":
@@ -326,7 +361,12 @@ async def run_discussion(
                 round_num=MAX_DISCUSSION_TOPICS,
                 role="assistant",
             )
-            _log_llm_call(session_id=session_id, agent="moderator_close", latency_ms=latency_ms)
+            await alog_llm_call(
+                session_id=session_id,
+                agent="moderator_close",
+                model=settings.AGENT_MODEL,
+                latency_ms=latency_ms,
+            )
 
             turn_id = str(uuid.uuid4())
             yield {"type": "turn_end", "speaker": "moderator", "content": close_content,
@@ -356,6 +396,21 @@ async def run_discussion(
             while not out_queue.empty():
                 yield out_queue.get_nowait()
 
+            # ── P9: 소프트 인터럽트 체크 (턴 사이에만) ─────
+            ch = get_channel(session_id)
+            if ch is not None and not ch.queue.empty():
+                try:
+                    item = ch.queue.get_nowait()
+                    itext = (item.get("text") or "").strip()
+                    if itext:
+                        # turns 엔드포인트가 이미 DB 저장함 → 인메모리 상태만 갱신
+                        state.history.append(TurnRecord("user", itext, state.round, "user"))
+                        yield {"type": "user_input", "text": itext, "round": state.round}
+                        pending_interrupt = itext
+                        logger.debug("소프트 인터럽트 감지: session_id=%s text=%r", session_id, itext[:40])
+                except asyncio.QueueEmpty:
+                    pass
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  DB Helpers
@@ -368,25 +423,22 @@ def _save_message(
     content: str,
     round_num: int,
     role: str,
+    intent: str | None = None,
+    target: str | None = None,
+    client_ts: str | None = None,
 ) -> None:
-    supabase.table("messages").insert({
+    row: dict = {
         "session_id": session_id,
         "speaker": speaker,
         "content": content,
         "round": round_num,
         "role": role,
         "server_ts": datetime.now(timezone.utc).isoformat(),
-    }).execute()
-
-
-def _log_llm_call(session_id: str, agent: str, latency_ms: int) -> None:
-    """llm_calls 테이블에 LLM 호출 로그 기록. 실패해도 메인 흐름을 중단하지 않는다."""
-    try:
-        supabase.table("llm_calls").insert({
-            "session_id": session_id,
-            "agent": agent,
-            "model": "gpt-4o-mini",
-            "latency_ms": latency_ms,
-        }).execute()
-    except Exception:
-        logger.warning("llm_calls 기록 실패: session_id=%s agent=%s", session_id, agent, exc_info=True)
+    }
+    if intent is not None:
+        row["intent"] = intent
+    if target is not None:
+        row["target"] = target
+    if client_ts is not None:
+        row["client_ts"] = client_ts
+    supabase.table("messages").insert(row).execute()

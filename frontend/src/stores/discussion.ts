@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { type DisplayMessage, type Speaker } from '@/components/discussion/types'
 
 export { type DisplayMessage, type Speaker }
@@ -17,12 +17,18 @@ export const useDiscussionStore = defineStore('discussion', () => {
   }>({ speaker: null, partial_text: '', turn_id: null, round: 1 })
 
   // ── UI 상태 ───────────────────────────────────────────────
-  const inputEnabled = ref(false)         // 입력창 활성화
+  const inputEnabled = ref(false)         // 입력창 활성화 (explicit wait_for_user)
+  const interruptSent = ref(false)        // P9: 소프트 인터럽트 전송 후 락
   const userIdleSeconds = ref(0)          // 침묵 시각화용
   const round = ref(1)
   const isFinal = ref(false)
   const error = ref<string | null>(null)
   const isLoading = ref(false)            // 연결 중 / 디렉터 대기 → 로딩 점 표시
+
+  // P9: AI 발화 중이고, 명시적 대기 아니고, 인터럽트 미전송 → 끼어들기 가능
+  const canInterrupt = computed(
+    () => currentTurn.value.speaker !== null && !isFinal.value && !inputEnabled.value && !interruptSent.value
+  )
 
   let _idCounter = 0
   let _pendingId: number | null = null    // 현재 스트리밍 중인 bubble id
@@ -81,6 +87,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
    */
   function onTurnStart(speaker: Speaker, turnId: string, r: number) {
     isLoading.value = false
+    interruptSent.value = false  // P9: AI가 응답 시작 → 인터럽트 락 해제
     _stopIdleTimer()
     _stopDrain()
     inputEnabled.value = false
@@ -128,6 +135,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
   /** 4. wait_for_user: 입력창 열기, idle 타이머 시작 */
   function onWaitForUser(r: number) {
     isLoading.value = false
+    interruptSent.value = false  // P9: 명시적 대기 → 인터럽트 락 해제
     round.value = r
     inputEnabled.value = true
     _startIdleTimer()
@@ -178,17 +186,30 @@ export const useDiscussionStore = defineStore('discussion', () => {
     isLoading.value = true
   }
 
-  /** 학생 발화 추가 (로컬 즉시 반영) */
-  function addUserBubble(content: string, r: number) {
+  /**
+   * 학생 발화 추가 (로컬 즉시 반영 — optimistic UI).
+   * isInterrupt=true 이면 소프트 인터럽트: inputEnabled는 건드리지 않고 interruptSent만 설정.
+   */
+  function addUserBubble(content: string, r: number, isInterrupt = false) {
     bubbles.value.push({ id: _nextId(), speaker: 'user', content, round: r })
-    inputEnabled.value = false
-    _stopIdleTimer()
+    if (isInterrupt) {
+      interruptSent.value = true
+    } else {
+      inputEnabled.value = false
+      _stopIdleTimer()
+    }
+  }
+
+  /** P9. user_input: 서버가 소프트 인터럽트 수신 확인 → 화면은 이미 optimistic으로 반영됨 */
+  function onUserInput(_text: string, _r: number) {
+    // no-op: 말풍선은 addUserBubble에서 이미 표시됨
   }
 
   function reset() {
     bubbles.value = []
     currentTurn.value = { speaker: null, partial_text: '', turn_id: null, round: 1 }
     inputEnabled.value = false
+    interruptSent.value = false
     round.value = 1
     isFinal.value = false
     error.value = null
@@ -203,6 +224,8 @@ export const useDiscussionStore = defineStore('discussion', () => {
     bubbles,
     currentTurn,
     inputEnabled,
+    canInterrupt,
+    interruptSent,
     userIdleSeconds,
     round,
     isFinal,
@@ -219,6 +242,7 @@ export const useDiscussionStore = defineStore('discussion', () => {
     onRoundChange,
     onUserIdle,
     onUserSkip,
+    onUserInput,
     addUserBubble,
     reset,
   }

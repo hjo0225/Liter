@@ -4,6 +4,7 @@ import { ref } from 'vue'
 defineProps<{
   modelValue: string
   waitingForUser: boolean
+  interruptEnabled: boolean   // P9: AI 발화 중 끼어들기 가능
   isDone: boolean
   idleSeconds?: number
 }>()
@@ -64,13 +65,27 @@ function handleKeydown(e: KeyboardEvent) {
       ⏳ 잠시 후 자동으로 다음 단계로 넘어가요
     </p>
 
+    <!-- P9: 끼어들기 가능 힌트 -->
+    <p
+      v-else-if="interruptEnabled && !isDone"
+      class="text-xs text-center mb-2 font-medium"
+      style="color: #FF9500;"
+    >
+      ✋ 지금 끼어들 수 있어요! 말하면 AI가 받아쳐줄 거예요
+    </p>
+
     <div class="flex gap-2 items-center">
       <!-- 입력 필드 -->
       <input
         :value="modelValue"
         type="text"
-        :placeholder="waitingForUser && !isDone ? '내 의견을 입력해요...' : '상대방의 발언을 기다리는 중...'"
-        :disabled="!waitingForUser || isDone"
+        :placeholder="
+          isDone ? '토의가 끝났어요.' :
+          waitingForUser ? '내 의견을 입력해요...' :
+          interruptEnabled ? '지금 말해봐요! (끼어들기)' :
+          '상대방의 발언을 기다리는 중...'
+        "
+        :disabled="(!waitingForUser && !interruptEnabled) || isDone"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
         @keydown="handleKeydown"
         @focus="focused = true"
@@ -78,23 +93,36 @@ function handleKeydown(e: KeyboardEvent) {
         class="flex-1 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
         :style="{
           background: '#F9FAFB',
-          border: `1.5px solid ${focused && waitingForUser && !isDone ? '#3182F6' : '#E5E8EB'}`,
-          color: waitingForUser && !isDone ? '#191F28' : '#8B95A1',
+          border: `1.5px solid ${
+            focused && !isDone && (waitingForUser || interruptEnabled)
+              ? (interruptEnabled && !waitingForUser ? '#FF9500' : '#3182F6')
+              : '#E5E8EB'
+          }`,
+          color: (waitingForUser || interruptEnabled) && !isDone ? '#191F28' : '#8B95A1',
         }"
       />
 
       <!-- 전송 버튼 -->
       <button
         @click="emit('send')"
-        :disabled="!waitingForUser || !modelValue.trim() || isDone"
+        :disabled="(!waitingForUser && !interruptEnabled) || !modelValue.trim() || isDone"
         class="px-5 py-3 rounded-xl font-bold text-sm shrink-0 transition-all"
         :style="{
-          background: waitingForUser && modelValue.trim() && !isDone ? '#3182F6' : '#E5E8EB',
-          color: waitingForUser && modelValue.trim() && !isDone ? 'white' : '#8B95A1',
-          cursor: waitingForUser && modelValue.trim() && !isDone ? 'pointer' : 'not-allowed',
+          background:
+            (waitingForUser || interruptEnabled) && modelValue.trim() && !isDone
+              ? (interruptEnabled && !waitingForUser ? '#FF9500' : '#3182F6')
+              : '#E5E8EB',
+          color:
+            (waitingForUser || interruptEnabled) && modelValue.trim() && !isDone
+              ? 'white'
+              : '#8B95A1',
+          cursor:
+            (waitingForUser || interruptEnabled) && modelValue.trim() && !isDone
+              ? 'pointer'
+              : 'not-allowed',
         }"
       >
-        전송
+        {{ interruptEnabled && !waitingForUser ? '끼어들기' : '전송' }}
       </button>
     </div>
   </div>
