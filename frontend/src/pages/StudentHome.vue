@@ -171,7 +171,7 @@ function handleLogout() {
       <div class="mx-auto flex h-20 max-w-6xl items-center justify-between px-5 md:px-6">
         <div class="flex items-center gap-4">
           <img src="/service_logo.png" alt="토도독" class="h-14 w-auto" />
-          <div class="text-base font-bold" style="color: var(--ink-700)">{{ classroomName }}</div>
+          <div class="hidden rounded-full px-4 py-2 text-base font-bold md:block" style="background: var(--ink-100); color: var(--ink-700)">{{ classroomName }}</div>
         </div>
 
         <div class="flex items-center gap-3">
