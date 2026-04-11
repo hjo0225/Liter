@@ -29,6 +29,12 @@ watch(() => props.messages.at(-1)?.content, async () => {
   _scrollToBottom(false)
 })
 
+// 타이핑 인디케이터 → 토큰 전환 시 scroll
+watch(() => props.messages.at(-1)?.isTyping, async () => {
+  await nextTick()
+  _scrollToBottom(false)
+})
+
 // 로딩 점 추가/제거 시
 watch(() => props.isLoading, async () => {
   await nextTick()
@@ -83,7 +89,16 @@ defineExpose({ scrollToBottom })
             class="max-w-xs text-sm leading-relaxed"
             style="background: #fff; border: 1.5px solid #E5E8EB; border-radius: 14px 14px 14px 4px; padding: 10px 14px; color: #4E5968;"
           >
-            <template v-if="msg.content">{{ msg.content }}</template>
+            <!-- 타이핑 인디케이터: 말풍선 안 3개 점 -->
+            <template v-if="msg.isTyping">
+              <span
+                v-for="i in 3"
+                :key="i"
+                class="inline-block w-1.5 h-1.5 rounded-full mx-0.5 animate-bounce"
+                :style="{ background: SPEAKERS[msg.speaker].color, animationDelay: `${(i - 1) * 0.18}s` }"
+              />
+            </template>
+            <template v-else-if="msg.content">{{ msg.content }}</template>
             <!-- 스트리밍 중 아직 텍스트 없음 → 커서 표시 -->
             <span v-else class="inline-block w-2 h-4 bg-current opacity-60 animate-pulse" />
           </div>
