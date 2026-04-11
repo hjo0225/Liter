@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+
 defineProps<{
   modelValue: string
   waitingForUser: boolean
@@ -9,6 +11,8 @@ const emit = defineEmits<{
   'update:modelValue': [value: string]
   send: []
 }>()
+
+const focused = ref(false)
 
 function handleKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -55,10 +59,12 @@ function handleKeydown(e: KeyboardEvent) {
         :disabled="!waitingForUser || isDone"
         @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)"
         @keydown="handleKeydown"
-        class="flex-1 px-4 py-2.5 rounded-xl outline-none text-sm transition-all"
+        @focus="focused = true"
+        @blur="focused = false"
+        class="flex-1 px-4 py-2.5 rounded-xl outline-none text-sm transition-colors"
         :style="{
           background: '#0E2449',
-          border: `1.5px solid ${waitingForUser && !isDone ? '#2653AC' : '#1B3A6B'}`,
+          border: `1.5px solid ${focused && waitingForUser && !isDone ? '#2653AC' : '#1B3A6B'}`,
           color: waitingForUser && !isDone ? '#EBF0FC' : '#2653AC',
         }"
       />
