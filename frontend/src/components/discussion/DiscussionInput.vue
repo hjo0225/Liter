@@ -32,7 +32,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- 내 차례 알림 -->
     <p
       v-if="waitingForUser && !isDone && (idleSeconds ?? 0) < 15"
-      class="text-xs text-center mb-2 font-semibold"
+      class="text-sm text-center mb-2 font-semibold"
       style="color: #3182F6;"
     >
       💬 지금 내 의견을 말할 차례예요!
@@ -41,7 +41,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- 침묵 15~29초 → 부드러운 1차 힌트 -->
     <p
       v-else-if="waitingForUser && !isDone && (idleSeconds ?? 0) >= 15 && (idleSeconds ?? 0) < 30"
-      class="text-xs text-center mb-2"
+      class="text-sm text-center mb-2"
       style="color: #8B95A1;"
     >
       괜찮아요, 천천히 생각해도 돼요 🙂
@@ -50,7 +50,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- 침묵 30~89초 → 선생님이 한 번 더 물어봤어요 -->
     <p
       v-else-if="waitingForUser && !isDone && (idleSeconds ?? 0) >= 30 && (idleSeconds ?? 0) < 90"
-      class="text-xs text-center mb-2"
+      class="text-sm text-center mb-2"
       style="color: #FF9500;"
     >
       💬 선생님이 한 번 더 여쭤봤어요 — 편하게 말해줘요!
@@ -59,7 +59,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- 침묵 90초 → 곧 자동으로 넘어가요 -->
     <p
       v-else-if="waitingForUser && !isDone && (idleSeconds ?? 0) >= 90"
-      class="text-xs text-center mb-2"
+      class="text-sm text-center mb-2"
       style="color: #F04452;"
     >
       ⏳ 잠시 후 자동으로 다음 단계로 넘어가요
@@ -68,7 +68,7 @@ function handleKeydown(e: KeyboardEvent) {
     <!-- P9: 끼어들기 가능 힌트 -->
     <p
       v-else-if="interruptEnabled && !isDone"
-      class="text-xs text-center mb-2 font-medium"
+      class="text-sm text-center mb-2 font-medium"
       style="color: #FF9500;"
     >
       ✋ 지금 끼어들 수 있어요! 말하면 AI가 받아쳐줄 거예요
@@ -90,7 +90,7 @@ function handleKeydown(e: KeyboardEvent) {
         @keydown="handleKeydown"
         @focus="focused = true"
         @blur="focused = false"
-        class="flex-1 px-4 py-3 rounded-xl outline-none text-sm transition-colors"
+        class="flex-1 px-4 py-3 rounded-xl outline-none text-base transition-colors"
         :style="{
           background: '#F9FAFB',
           border: `1.5px solid ${
@@ -106,7 +106,7 @@ function handleKeydown(e: KeyboardEvent) {
       <button
         @click="emit('send')"
         :disabled="(!waitingForUser && !interruptEnabled) || !modelValue.trim() || isDone"
-        class="px-5 py-3 rounded-xl font-bold text-sm shrink-0 transition-all"
+        class="px-5 py-3 rounded-xl font-bold text-base shrink-0 transition-all"
         :style="{
           background:
             (waitingForUser || interruptEnabled) && modelValue.trim() && !isDone

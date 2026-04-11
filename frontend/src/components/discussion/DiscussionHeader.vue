@@ -17,7 +17,7 @@ defineProps<{
       <img src="/service_logo.png" alt="토도독" class="h-10 w-auto flex-shrink-0" />
 
       <!-- 스텝 인디케이터 -->
-      <div class="flex items-center gap-1.5 text-xs font-bold">
+      <div class="flex items-center gap-1.5 text-sm font-bold">
         <div class="flex items-center gap-1.5">
           <span class="w-2 h-2 rounded-full flex-shrink-0" style="background: #00C471;" />
           <span style="color: #00C471;">읽기</span>
@@ -41,7 +41,7 @@ defineProps<{
 
       <!-- 라운드 chip -->
       <span
-        class="text-xs px-3 py-1.5 rounded-full font-bold flex-shrink-0"
+        class="text-sm px-3 py-1.5 rounded-full font-bold flex-shrink-0"
         style="background: #FFF4E5; color: #FF9500;"
       >
         {{ round }} / {{ maxRounds }}
@@ -50,7 +50,7 @@ defineProps<{
 
     <!-- 토론 주제 서브행 -->
     <div class="px-4 pb-2.5 flex items-center gap-2">
-      <span class="text-xs font-semibold truncate" style="color: #4E5968;">💬 {{ title }}</span>
+      <span class="text-sm font-semibold truncate" style="color: #4E5968;">💬 {{ title }}</span>
     </div>
   </nav>
 </template>

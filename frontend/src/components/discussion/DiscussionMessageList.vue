@@ -60,14 +60,14 @@ defineExpose({ scrollToBottom })
       <!-- 내 메시지: 오른쪽 정렬 -->
       <div v-if="msg.speaker === 'user'" class="flex justify-end gap-2 items-end">
         <div
-          class="max-w-xs rounded-2xl px-4 py-3 text-sm leading-relaxed font-medium"
+          class="max-w-xs rounded-2xl px-4 py-3 text-base leading-relaxed font-medium"
           style="background: #3182F6; color: #fff; border-radius: 14px 14px 4px 14px;"
         >
           {{ msg.content }}
         </div>
         <div
           class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-          style="background: #3182F6; font-size: 12px;"
+          style="background: #3182F6; font-size: 14px;"
         >
           {{ (props.studentName ?? '나')[0] }}
         </div>
@@ -77,16 +77,16 @@ defineExpose({ scrollToBottom })
       <div v-else class="flex gap-2 items-start">
         <div
           class="w-9 h-9 rounded-full flex items-center justify-center font-bold flex-shrink-0"
-          :style="{ background: SPEAKERS[msg.speaker].bg, color: SPEAKERS[msg.speaker].textColor, fontSize: '13px' }"
+          :style="{ background: SPEAKERS[msg.speaker].bg, color: SPEAKERS[msg.speaker].textColor, fontSize: '15px' }"
         >
           {{ SPEAKERS[msg.speaker].emoji }}
         </div>
         <div class="flex flex-col gap-1">
-          <span class="text-xs font-bold" :style="{ color: SPEAKERS[msg.speaker].color }">
+          <span class="text-sm font-bold" :style="{ color: SPEAKERS[msg.speaker].color }">
             {{ SPEAKERS[msg.speaker].name }}
           </span>
           <div
-            class="max-w-xs text-sm leading-relaxed"
+            class="max-w-xs text-base leading-relaxed"
             style="background: #fff; border: 1.5px solid #E5E8EB; border-radius: 14px 14px 14px 4px; padding: 10px 14px; color: #4E5968;"
           >
             <!-- 타이핑 인디케이터: 말풍선 안 3개 점 -->
@@ -119,10 +119,10 @@ defineExpose({ scrollToBottom })
     <!-- 토의 완료 -->
     <div v-if="isDone" class="text-center py-4">
       <div class="text-2xl mb-1">🎉</div>
-      <p class="text-sm font-bold" style="color: #3182F6;">토의 완료! 결과를 확인해요...</p>
+      <p class="text-base font-bold" style="color: #3182F6;">토의 완료! 결과를 확인해요...</p>
     </div>
 
-    <p v-if="error" class="text-sm text-center font-semibold" style="color: #F04452;">
+    <p v-if="error" class="text-base text-center font-semibold" style="color: #F04452;">
       {{ error }}
     </p>
   </div>

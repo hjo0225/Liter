@@ -144,7 +144,7 @@ async function handleConfirm() {
         <img src="/service_logo.png" alt="토도독" class="h-10 w-auto flex-shrink-0" />
 
         <!-- 스텝 인디케이터 -->
-        <div class="flex items-center gap-1.5 text-xs font-bold">
+        <div class="flex items-center gap-1.5 text-sm font-bold">
           <div class="flex items-center gap-1.5">
             <span
               class="w-2 h-2 rounded-full flex-shrink-0"
@@ -189,13 +189,13 @@ async function handleConfirm() {
         <!-- 메타 chip: 장르 + 난이도 -->
         <div class="flex items-center gap-2">
           <span
-            class="text-xs font-bold px-3 py-1 rounded-full"
+            class="text-sm font-bold px-3 py-1 rounded-full"
             style="background: #EEF3FF; color: #3182F6;"
           >
             {{ sessionStore.passage.genre }}
           </span>
           <span
-            class="text-xs font-bold px-3 py-1 rounded-full"
+            class="text-sm font-bold px-3 py-1 rounded-full"
             style="background: #FFF4E5; color: #FF9500;"
           >
             {{ difficultyStars }}
@@ -263,10 +263,10 @@ async function handleConfirm() {
 
         <!-- 문제 번호 라벨 + 질문 -->
         <div class="flex flex-col gap-1.5">
-          <span class="font-bold" style="font-size: 13px; color: #3182F6;">
+          <span class="font-bold" style="font-size: 15px; color: #3182F6;">
             문제 {{ sessionStore.currentQuestionIndex + 1 }}
           </span>
-          <p class="font-bold text-base leading-snug" style="color: #191F28;">
+          <p class="font-bold text-lg leading-snug" style="color: #191F28;">
             {{ currentQuestion.text }}
           </p>
         </div>
@@ -309,7 +309,7 @@ async function handleConfirm() {
         </div>
 
         <!-- 에러 -->
-        <p v-if="answerError" class="text-sm" style="color: #F04452;">{{ answerError }}</p>
+        <p v-if="answerError" class="text-base" style="color: #F04452;">{{ answerError }}</p>
       </div>
 
       <!-- 고정 하단 버튼 -->
