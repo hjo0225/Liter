@@ -213,16 +213,22 @@ async def stream_agent_turn(
         system_prompt += "\n\n[객관식 결과]\n" + "\n".join(qr_lines)
 
     # 발화 지시를 자연어로 구성 (intent=X, target=None 형태가 거절 패턴 유발)
+    is_first_turn = not state.history  # history 없음 = 세션 첫 발화
     intent_map = {
-        "challenge": f"직전 발언에 반론을 제시하세요.",
-        "agree": f"직전 발언에 공감하며 의견을 더하세요.",
+        "challenge": "직전 발언에 반론을 제시하세요.",
+        "agree": "직전 발언에 공감하며 의견을 더하세요.",
         "ask_user": f"{student_name}에게 질문하세요.",
-        "summarize": f"대화를 짧게 정리하고 다음 발언자에게 질문을 넘기세요.",
-        "redirect": f"주제를 지문으로 자연스럽게 되돌리세요.",
+        "summarize": "대화를 짧게 정리하고 다음 발언자에게 질문을 넘기세요.",
+        "redirect": "주제를 지문으로 자연스럽게 되돌리세요.",
         "nudge": f"{student_name}가 발언할 수 있도록 부드럽게 유도하세요.",
-        "acknowledge": f"방금 발언을 자연스럽게 받아 응답하세요.",
+        "acknowledge": "방금 발언을 자연스럽게 받아 응답하세요.",
     }
-    instruction = intent_map.get(decision.intent, "자연스럽게 발언하세요.")
+    if is_first_turn:
+        # 첫 발화: history가 없으므로 "정리/반론/공감" 지시는 hallucination 유발
+        # 모더레이터가 토의 주제를 소개하고 민지에게 첫 질문을 던지도록 강제
+        instruction = f"위 지문을 바탕으로 토의 주제 1개를 소개하고, 민지에게 먼저 의견을 물어보세요."
+    else:
+        instruction = intent_map.get(decision.intent, "자연스럽게 발언하세요.")
     if decision.target and decision.target not in ("None", "null"):
         target_label = {"user": student_name, "moderator": "선생님",
                         "peer_a": "민지", "peer_b": "준서"}.get(decision.target, decision.target)
