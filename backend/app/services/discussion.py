@@ -201,10 +201,37 @@ async def stream_agent_turn(
     student_name = state.context.get("student_name", "학생")
     system_prompt = load_prompt(speaker, student_name=student_name)
 
+    # 지문·학생 정보를 시스템 프롬프트에 주입 (첫 턴부터 context 확보)
+    passage = state.context.get("passage_content", "")
+    if passage:
+        system_prompt += f"\n\n[오늘 토의 지문]\n{passage}"
+    qr_lines = []
+    for qr in state.context.get("question_results", []):
+        result_str = "정답" if qr.get("is_correct") else "오답"
+        qr_lines.append(f"- {qr.get('question_type', '')} 유형: {result_str}")
+    if qr_lines:
+        system_prompt += "\n\n[객관식 결과]\n" + "\n".join(qr_lines)
+
+    # 발화 지시를 자연어로 구성 (intent=X, target=None 형태가 거절 패턴 유발)
+    intent_map = {
+        "challenge": f"직전 발언에 반론을 제시하세요.",
+        "agree": f"직전 발언에 공감하며 의견을 더하세요.",
+        "ask_user": f"{student_name}에게 질문하세요.",
+        "summarize": f"대화를 짧게 정리하고 다음 발언자에게 질문을 넘기세요.",
+        "redirect": f"주제를 지문으로 자연스럽게 되돌리세요.",
+        "nudge": f"{student_name}가 발언할 수 있도록 부드럽게 유도하세요.",
+        "acknowledge": f"방금 발언을 자연스럽게 받아 응답하세요.",
+    }
+    instruction = intent_map.get(decision.intent, "자연스럽게 발언하세요.")
+    if decision.target and decision.target not in ("None", "null"):
+        target_label = {"user": student_name, "moderator": "선생님",
+                        "peer_a": "민지", "peer_b": "준서"}.get(decision.target, decision.target)
+        instruction += f" (대상: {target_label})"
+
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
         *build_history_messages(state),
-        {"role": "user", "content": f"intent={decision.intent}, target={decision.target}"},
+        {"role": "user", "content": instruction},
     ]
 
     turn_id = str(uuid.uuid4())
