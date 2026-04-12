@@ -19,7 +19,7 @@
 | Frontend | Vue 3 (Composition API) + TypeScript + Pinia + TailwindCSS + Vite |
 | Backend | FastAPI (Python 3.11) + async/await + uvicorn |
 | Database | Supabase (PostgreSQL, RLS, Auth) |
-| LLM | OpenAI API — Director: `gpt-4o-mini`, Agent: `gpt-4o-mini` |
+| LLM | OpenAI API — Agent: `gpt-4o-mini` (Director LLM 제거됨) |
 | 실시간 통신 | SSE (Server-Sent Events) — fetch + ReadableStream 방식 |
 | 인프라 | GCP Cloud Run + Vercel + Cloud Scheduler |
 
@@ -65,28 +65,49 @@ frontend/
 ```
 1. 지문 읽기 (250~400자)
 2. 객관식 퀴즈 3문항 (정보 추출 / 추론 / 어휘)
-3. AI 그룹 토의 (1~3라운드)
-   - 라운드 1: 의견 제시 (moderator → peer_a → peer_b → student)
-   - 라운드 2: 반박 (약점 영역 집중)
-   - 라운드 3: 결론 (요약·종합)
+3. AI 그룹 토의 (3라운드 고정)
 4. 세션 종료 → 점수 산출 + 레벨 조정
 ```
 
+### 토의 구조 — 고정 턴 시퀀스 (Director LLM 없음)
+
+Director LLM을 제거하고 **고정 시퀀스**로 턴을 결정한다. `_next_decision(state)` 함수가 `round_turn_index`로 다음 화자를 결정.
+
+```
+ROUND_SPEAKERS = ["moderator", "peer_a", "peer_b", "moderator"]
+
+라운드당 4턴:
+  Step 0: 선생님 (오프닝/전환)     — 주제 소개, 반박 안내, 결론 안내
+  Step 1: 민지 (peer_a)           — 의견/반박/결론
+  Step 2: 준서 (peer_b)           — 민지에 반응 + 자기 의견
+  Step 3: 선생님 (정리+질문)       — 실제 발언 요약 + 학생에게 질문
+  → wait_for_user (학생 입력 대기)
+  × 3라운드 → close (마무리 + 점수)
+```
+
+**라운드별 내용:**
+- 라운드 1 (의견 나누기): 주제 소개 → 각자 의견 → 학생에게 질문
+- 라운드 2 (반박하기): 1단계 의견 정리 → 반박 → 학생에게 반박 요청
+- 라운드 3 (결론 내기): 결론 안내 → 각자 결론 → 학생에게 결론 요청
+
+**instruction 생성:** `_build_instruction(speaker, step, round_num, state, student_name)` 함수가 (speaker, step, round)을 키로 정확히 하나의 instruction을 생성한다.
+
 ### 멀티 에이전트 시스템
 
-- **Director** (`services/director.py`): LLM 기반 상태 머신. 다음 발화자·의도·대상을 결정. Guard 규칙으로 하드 제약 적용.
+- **턴 결정** (`services/discussion.py`의 `_next_decision`): 고정 시퀀스 기반. LLM 호출 없음.
 - **Agents** (`services/discussion.py` + `agents/discussion_agent.py`): moderator, peer_a, peer_b 각각 독립 LLM 호출. 역할 혼동 방지를 위해 대화 공유 X.
 - **프롬프트**: `backend/prompts/*.md` 파일 기반. `{student_name}` 등 런타임 치환.
+- **Director 파일** (`services/director.py`): 레거시. 현재 discussion.py에서 사용하지 않음. 테스트에서만 참조.
 
-### Director Guard 규칙
-1. `last_speaker is None` → moderator 강제
-2. `round > max_rounds` → close 강제
-3. 동일 발화자 연속 → 다음 순서로 리다이렉트
-4. AI 3명 발화 완료(turn_index ≥ 3) → wait_for_user 강제
-5. 학생 발화 후 같은 라운드에서 다시 wait_for_user 금지
+### 에이전트 발화 규칙
+
+1. **모더레이터**: 아직 발언하지 않은 참여자의 의견을 절대 미리 언급하지 않음. Step 3에서 실제 발언 내용을 instruction에 직접 주입하여 hallucination 방지.
+2. **민지 (peer_a)**: 내용에 맞게 공감/반대/보충 자연스럽게 선택. 무조건 반대하지 않음. 지문 근거 필수.
+3. **준서 (peer_b)**: 민지 발언에 반응 후 자기 의견. 솔직한 "잘 모르겠어" 허용. 질문 포함.
+4. **출력 금지**: `[민지]`, `[선생님]` 등 이름 태그 출력 금지. 발언 내용만 출력.
 
 ### Soft Interrupt (P9 패턴)
-학생이 AI 발화 도중 끼어들면 스트림을 끊지 않고, `SessionChannel` 큐에 저장 → Director가 다음 결정 시점에 인식.
+학생이 AI 발화 도중 끼어들면 스트림을 끊지 않고, `SessionChannel` 큐에 저장 → 턴 사이에 감지 시 즉시 `advance_round()`로 다음 라운드 전진.
 
 ---
 
@@ -156,7 +177,7 @@ npm run dev    # http://localhost:5173 (Vite 프록시로 백엔드 연결)
 ### 설계 원칙
 - 세션은 **일회성(ephemeral)** — 중도 이탈 시 삭제, 재개 불가
 - 에이전트 간 대화 컨텍스트 **공유 금지** — 역할 혼동 방지
-- Director는 LLM + Guard 하이브리드 — LLM 3회 실패 시 rule-based fallback
+- **턴 순서는 고정 시퀀스** — LLM으로 결정하지 않음. `ROUND_SPEAKERS` 배열 인덱싱.
 - SSE는 fetch + ReadableStream 방식 — EventSource 아님 (JWT 전달 제약)
 
 ### Git 커밋 스타일
@@ -185,12 +206,14 @@ teachers       — id, email, password_hash, classroom_id
 
 ## 해결된 주요 버그 (히스토리)
 
-1. **에이전트 역할 혼동**: 3명이 같은 LLM 컨텍스트 공유 → 독립 호출 + Director 분리로 해결
+1. **에이전트 역할 혼동**: 3명이 같은 LLM 컨텍스트 공유 → 독립 호출로 해결
 2. **중복 세션 생성(Double Submit)**: 네트워크 지연 + 버튼 스팸 → loading 가드 + 버튼 disabled 처리
 3. **레벨 수동 설정 덮어쓰기**: cron이 교사 수동 설정 무시 → `is_manual_override` 플래그 추가
-4. **첫 발화 hallucination**: history 없을 때 이름 등 헛소리 → Guard 0으로 moderator 강제 + open 지시
-5. **반박 단계 학생 턴 누락**: round별 `student_has_spoken` + Guard 3 추가
-6. **AI 발화 JSON 래퍼 출력**: content 필드만 추출하도록 파싱 추가
+4. **모더레이터 의견 hallucination**: 아직 발언하지 않은 참여자 의견을 미리 지어냄 → instruction에 "금지" 명시 + 실제 발언 내용 주입
+5. **기계적 반대 버그**: "절반 이상 반대" 프롬프트 규칙 → 내용 무관하게 반대 → 규칙 제거, 내용 기반 자연스러운 반응으로 변경
+6. **이름 태그 누출**: `[민지] 발언내용` 형태로 프롬프트 유출 → 히스토리 포맷 `[민지]` → `민지:` 변경 + 출력 금지 규칙 추가
+7. **Director LLM 불필요**: 턴 순서가 고정인데 LLM으로 결정 → guard가 어차피 덮어씀 → Director LLM 제거, 고정 시퀀스로 변경
+8. **AI 발화 JSON 래퍼 출력**: content 필드만 추출하도록 파싱 추가
 
 ---
 
@@ -202,4 +225,5 @@ teachers       — id, email, password_hash, classroom_id
 | peer_a | 민지 | 적극적, 의견 주장형 |
 | peer_b | 준서 | 소극적, 질문형 |
 
-각 에이전트는 `backend/prompts/{role}.md`에 3단계 발화 패턴 템플릿이 정의되어 있다.
+각 에이전트의 시스템 프롬프트는 `backend/prompts/{role}.md`에 정의.
+발화 패턴(instruction)은 `discussion.py`의 `_build_instruction(speaker, step, round)` 함수에서 동적 생성.
