@@ -213,28 +213,37 @@ async def stream_agent_turn(
         system_prompt += "\n\n[객관식 결과]\n" + "\n".join(qr_lines)
 
     # ── 3단계 구조에 맞춘 발화 지시 생성 ─────────────────────
-    CHAR_LIMIT = "공백 포함 50자 이내로 말씀하세요."
+    CHAR_LIMIT = "공백 포함 50자 이내로 말하세요."
     is_first_turn = not state.history
     round_num = state.round
     speakers_this_round = {t.speaker for t in state.history if t.round == round_num}
     student_has_spoken = any(t.speaker == "user" and t.round == round_num for t in state.history)
+
+    # 직전 발언 인용 (peer 간 대화 연결용)
+    last_turn = state.history[-1] if state.history else None
+    last_quote = ""
+    if last_turn:
+        label = {"moderator": "선생님", "peer_a": "민지", "peer_b": "준서"}.get(last_turn.speaker, last_turn.speaker)
+        last_quote = f'직전에 {label}가 "{last_turn.content[:40]}"라고 했습니다. 이 발언에 구체적으로 반응하며 시작하세요. '
 
     if is_first_turn and speaker == "moderator":
         # 세션 첫 발화: 항상 moderator가 주제 소개 (apply_guards 보장)
         instruction = f"자기소개 없이 바로 위 지문을 바탕으로 토의 주제를 소개하고, 민지에게 의견을 물어보세요. {CHAR_LIMIT}"
     elif is_first_turn:
         # 혹시 moderator가 아닌 경우 안전 폴백
-        instruction = f"위 지문을 바탕으로 자신의 의견을 말씀하세요. {CHAR_LIMIT}"
+        instruction = f"위 지문을 바탕으로 자신의 의견을 말하세요. {CHAR_LIMIT}"
 
     elif round_num == 1:  # ── 1단계: 의견 나누기 ──────────────────
         if speaker == "peer_a" and not student_has_spoken:
             instruction = (
-                f"선생님이 소개한 주제에 대해 지문 근거를 들어 자신의 의견을 말씀하세요. "
+                f"{last_quote}"
+                f"선생님이 소개한 주제에 대해 지문 근거를 들어 자신의 의견을 말하세요. "
                 f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
             )
         elif speaker == "peer_b" and not student_has_spoken:
             instruction = (
-                f"민지의 발언에 이름을 부르며 반응하고, 자신의 의견을 말씀하세요. "
+                f"{last_quote}"
+                f"민지의 발언 내용을 구체적으로 언급하며 반응하고, 자신의 의견을 말하세요. "
                 f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
             )
         elif speaker == "moderator":
@@ -253,12 +262,14 @@ async def stream_agent_turn(
             )
         elif speaker == "peer_a" and not student_has_spoken:
             instruction = (
+                f"{last_quote}"
                 f"1단계에서 나온 의견 중 하나를 지문 근거로 반박하세요. "
                 f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
             )
         elif speaker == "peer_b" and not student_has_spoken:
             instruction = (
-                f"민지의 반박에 반응하거나 다른 의견을 반박하세요. "
+                f"{last_quote}"
+                f"민지의 반박 내용을 구체적으로 언급하며 반응하거나 다른 의견을 반박하세요. "
                 f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
             )
         else:
@@ -270,7 +281,7 @@ async def stream_agent_turn(
                 f"토의를 정리하며 각자 결론을 말해 달라고 안내해 주세요. {CHAR_LIMIT}"
             )
         elif speaker in ("peer_a", "peer_b"):
-            instruction = f"오늘 토의에서 배운 점이나 내린 결론을 말씀하세요. {CHAR_LIMIT}"
+            instruction = f"{last_quote}오늘 토의에서 배운 점이나 내린 결론을 말하세요. {CHAR_LIMIT}"
         else:
             instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
 
