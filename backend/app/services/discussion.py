@@ -1,12 +1,13 @@
 """
-Discussion Orchestrator — Director Loop
-P4 기반 + P3 LLM Director 통합.
+Discussion Orchestrator — Fixed Sequence Loop
+고정 턴 시퀀스 기반 토의 진행. Director LLM 불필요.
 
 구조:
-  DiscussionState   — 토론 진행 상태 (라운드, 발화 순서, 이력)
+  ROUND_SPEAKERS    — 라운드당 고정 발화 순서 [M → A → B → M]
+  _next_decision    — 고정 시퀀스에서 다음 화자 결정 (LLM 없음)
+  _build_instruction— (speaker, step, round) → instruction 문자열
   stream_agent_turn — 에이전트 LLM 호출 → 큐로 이벤트 push
   run_discussion    — 메인 async generator 루프
-  Director 결정     — services.director.decide() (AsyncOpenAI, gpt-4o-mini)
 """
 
 from __future__ import annotations
@@ -32,11 +33,42 @@ from app.core.constants import MAX_DISCUSSION_TOPICS
 from app.core.llm_logging import alog_llm_call
 from app.core.state import get_channel
 from app.core.supabase import supabase
-from app.services.director import DirectorDecision, DirectorInput, decide as llm_decide
 
 _async_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 logger = logging.getLogger("uvicorn.error")
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  고정 턴 시퀀스
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# 라운드당 4턴: moderator(오프닝) → peer_a → peer_b → moderator(정리+질문)
+# 이후 wait_for_user → 다음 라운드
+ROUND_SPEAKERS: list[str] = ["moderator", "peer_a", "peer_b", "moderator"]
+
+
+@dataclass
+class TurnDecision:
+    """고정 시퀀스에서 결정된 다음 턴 정보."""
+    next_speaker: str   # "moderator" | "peer_a" | "peer_b" | "wait_for_user" | "close"
+    intent: str = "summarize"
+    target: str | None = None
+    reason: str = ""
+
+
+def _next_decision(state: "DiscussionState") -> TurnDecision:
+    """고정 시퀀스 기반 다음 화자 결정. Director LLM 불필요."""
+    if state.round > MAX_DISCUSSION_TOPICS:
+        return TurnDecision("close", reason="all rounds complete")
+
+    step = state.round_turn_index
+    if step < len(ROUND_SPEAKERS):
+        return TurnDecision(
+            ROUND_SPEAKERS[step],
+            reason=f"round {state.round} step {step}",
+        )
+    return TurnDecision("wait_for_user", intent="ask_user", reason="student turn")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -57,10 +89,10 @@ class DiscussionState:
     """
     토론 진행 상태. 매 요청마다 DB 메시지 이력에서 재구성된다.
 
-    round            : 현재 토픽 번호 (1~MAX_DISCUSSION_TOPICS). 초과하면 마무리.
-    round_turn_index : 라운드 내 위치
-                       0=사회자 차례, 1=민지 차례, 2=준서 차례, 3=학생 차례
-    demo_mode        : True이면 학생 턴을 건너뛰고 AI 3명이 자가 진행.
+    round            : 현재 라운드 번호 (1~MAX_DISCUSSION_TOPICS). 초과하면 마무리.
+    round_turn_index : 라운드 내 AI 턴 위치 (0~3)
+                       0=사회자 오프닝, 1=민지, 2=준서, 3=사회자 정리
+    demo_mode        : True이면 학생 턴을 건너뛰고 자가 진행.
     """
 
     session_id: str
@@ -106,21 +138,19 @@ class DiscussionState:
                 demo_mode=demo_mode,
             )
 
-        # 이번 라운드에서 누가 발화했는지로 turn_index 계산
-        turn_index = 0
-        if "moderator" in speakers_in_max_round:
-            turn_index = max(turn_index, 1)
-        if "peer_a" in speakers_in_max_round:
-            turn_index = max(turn_index, 2)
-        if "peer_b" in speakers_in_max_round:
-            turn_index = max(turn_index, 3)
+        # 이번 라운드에서 AI 발화 수를 세어 turn_index 결정
+        # (moderator가 2회 발화하므로 unique speaker 수가 아닌 실제 턴 수 사용)
+        ai_turns_in_round = sum(
+            1 for t in history
+            if t.round == max_round and t.speaker != "user"
+        )
 
         return cls(
             session_id=session_id,
             context=context,
             history=history,
             round=max_round,
-            round_turn_index=turn_index,
+            round_turn_index=ai_turns_in_round,
             demo_mode=demo_mode,
         )
 
@@ -141,30 +171,171 @@ class DiscussionState:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-#  Director Input 빌더
+#  Instruction 빌더
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+_CHAR_LIMIT = "공백 포함 50자 이내로 말하세요."
 
-def _make_director_input(
+
+def _opinions_in_round(state: DiscussionState, rnd: int) -> dict[str, str]:
+    """특정 라운드에서 각 참여자의 실제 발언 내용을 수집."""
+    result: dict[str, str] = {}
+    for t in state.history:
+        if t.round == rnd and t.speaker in ("peer_a", "peer_b", "user"):
+            result[t.speaker] = t.content[:50]
+    return result
+
+
+def _this_round_content(state: DiscussionState, speaker_key: str) -> str:
+    """현재 라운드에서 특정 화자의 발언 내용."""
+    for t in state.history:
+        if t.round == state.round and t.speaker == speaker_key:
+            return t.content[:50]
+    return ""
+
+
+def _build_instruction(
+    speaker: str,
+    step: int,          # 0~3 (ROUND_SPEAKERS 인덱스)
+    round_num: int,     # 1~3
     state: DiscussionState,
-    interrupted_by_user: bool = False,
-    interrupt_text: str = "",
-) -> DirectorInput:
-    """DiscussionState → DirectorInput 변환."""
-    recent = state.history[-5:]
-    return DirectorInput(
-        session_id=state.session_id,
-        round=state.round,
-        round_turn_index=state.round_turn_index,
-        last_speaker=state.history[-1].speaker if state.history else None,
-        recent_speakers=[t.speaker for t in recent],
-        recent_summary=[f"{t.speaker}: {t.content[:40]}" for t in recent],
-        all_correct=state.context.get("all_correct", False),
-        weak_areas=state.context.get("weak_areas", []),
-        demo_mode=state.demo_mode,
-        interrupted_by_user=interrupted_by_user,
-        interrupt_text=interrupt_text,
-    )
+    student_name: str,
+) -> str:
+    """(speaker, step, round) → 에이전트에게 전달할 instruction 문자열."""
+
+    # ── Step 0: moderator 오프닝 ───────────────────────────
+    if step == 0:
+        if round_num == 1:
+            return (
+                f"자기소개 없이 바로 토의를 시작하세요.\n"
+                f"패턴: \"글에서 [구체적 장면/상황 설명]하는 장면이 나와요. [질문]? 민지부터 말해 볼까요?\"\n"
+                f"금지: 민지, 준서, {student_name}의 의견을 절대 미리 말하지 마세요. "
+                f"아직 아무도 발언하지 않았습니다. 질문만 하세요.\n"
+                f"{_CHAR_LIMIT}"
+            )
+        elif round_num == 2:
+            r1 = _opinions_in_round(state, 1)
+            parts = []
+            if "peer_a" in r1:
+                parts.append(f"민지: \"{r1['peer_a']}\"")
+            if "peer_b" in r1:
+                parts.append(f"준서: \"{r1['peer_b']}\"")
+            if "user" in r1:
+                parts.append(f"{student_name}: \"{r1['user']}\"")
+            r1_text = " / ".join(parts)
+            return (
+                f"1단계 의견 정리: {r1_text}\n"
+                f"위 의견들을 있는 그대로 정리하고 반박 단계를 안내하세요.\n"
+                f"패턴: \"민지는 [실제 의견], 준서는 [실제 의견], {student_name}은 [실제 의견]이라고 했어요. "
+                f"이제 서로 다른 생각이 있으면 반박해 볼까요? 민지부터 말해 볼까요?\"\n"
+                f"금지: 1단계에서 실제로 한 말만 인용하세요. 없는 내용을 지어내지 마세요.\n"
+                f"{_CHAR_LIMIT}"
+            )
+        else:  # round >= 3
+            return (
+                f"토의 전체를 돌아보며 결론 단계를 안내하세요.\n"
+                f"패턴: \"[토의에서 어떤 이야기가 오갔는지 한마디 정리]. "
+                f"이제 각자 결론을 말해 볼까요? 민지부터 해 볼까요?\"\n"
+                f"{_CHAR_LIMIT}"
+            )
+
+    # ── Step 1: peer_a 발화 ────────────────────────────────
+    if step == 1:
+        if round_num == 1:
+            return (
+                f"선생님이 소개한 주제에 대해 의견을 말하세요.\n"
+                f"패턴: \"저는 [의견]이라고 생각해요. 글에서 '[지문 근거]'이라고 했거든요.\"\n"
+                f"{student_name}에게 질문하지 마세요. {_CHAR_LIMIT}"
+            )
+        elif round_num == 2:
+            r1 = _opinions_in_round(state, 1)
+            parts = [f"{k}: \"{v}\"" for k, v in r1.items()]
+            r1_text = " / ".join(parts)
+            return (
+                f"1단계 의견: {r1_text}\n"
+                f"1단계에서 나온 의견 중 자신과 다른 의견 하나를 골라 지문 근거로 반박하세요.\n"
+                f"중요: 실제로 자신과 다른 의견만 반박하세요. 같은 의견이면 보충하세요.\n"
+                f"패턴: \"[이름]이 [의견]라고 했는데, 나는 좀 달라. 글에서 '[근거]'라고 했거든.\"\n"
+                f"{student_name}에게 질문하지 마세요. {_CHAR_LIMIT}"
+            )
+        else:  # round >= 3
+            return (
+                f"토의를 통해 자신의 생각이 어떻게 정리되었는지 결론을 말하세요.\n"
+                f"패턴: \"나는 결국 [결론]이라고 생각해. "
+                f"[토의에서 어떻게 생각이 정리되었는지].\"\n"
+                f"{_CHAR_LIMIT}"
+            )
+
+    # ── Step 2: peer_b 발화 ────────────────────────────────
+    if step == 2:
+        peer_a_said = _this_round_content(state, "peer_a")
+        if round_num == 1:
+            return (
+                f"민지의 의견에 자연스럽게 반응하며 자신의 의견을 말하세요.\n"
+                f"직전에 민지가 \"{peer_a_said}\"라고 했습니다.\n"
+                f"공감하면 동의+추가, 다르면 다른 생각을 말하세요.\n"
+                f"패턴: \"민지가 [요약]라고 했는데, "
+                f"[공감: 나도 그렇게 생각해 + 추가 / 다르면: 나는 좀 달라 + 의견]. "
+                f"[궁금한 점]?\"\n"
+                f"{student_name}에게 질문하지 마세요. {_CHAR_LIMIT}"
+            )
+        elif round_num == 2:
+            return (
+                f"민지의 반박에 자연스럽게 반응하세요.\n"
+                f"직전에 민지가 \"{peer_a_said}\"라고 했습니다.\n"
+                f"공감이면 동의, 다르면 다른 의견을 말하세요.\n"
+                f"패턴: \"민지가 [요약]라고 했는데, "
+                f"[공감: 나도 그렇게 봐 / 다르면: 글쎄, 나는 ~인 것 같아]. "
+                f"[궁금한 점]?\"\n"
+                f"{student_name}에게 질문하지 마세요. {_CHAR_LIMIT}"
+            )
+        else:  # round >= 3
+            return (
+                f"민지 결론에 반응하며 자신의 결론을 말하세요.\n"
+                f"직전에 민지가 \"{peer_a_said}\"라고 했습니다.\n"
+                f"패턴: \"민지 말 들으니까 [공감/다른 생각]. "
+                f"나는 [자기 결론]. [배운 점].\"\n"
+                f"{_CHAR_LIMIT}"
+            )
+
+    # ── Step 3: moderator 정리 + 학생에게 질문 ─────────────
+    if step == 3:
+        peer_a_said = _this_round_content(state, "peer_a")
+        peer_b_said = _this_round_content(state, "peer_b")
+        if round_num == 1:
+            return (
+                f"민지와 준서가 방금 말한 내용을 있는 그대로 정리하고 "
+                f"{student_name}에게 의견을 물어보세요.\n"
+                f"민지가 실제로 한 말: \"{peer_a_said}\"\n"
+                f"준서가 실제로 한 말: \"{peer_b_said}\"\n"
+                f"패턴: \"민지는 [실제 발언 요약], 준서는 [실제 발언 요약]이라고 했어요. "
+                f"{student_name}, [의견을 묻는 질문]?\"\n"
+                f"금지: 위 실제 발언에 없는 내용을 지어내지 마세요.\n"
+                f"{_CHAR_LIMIT}"
+            )
+        elif round_num == 2:
+            return (
+                f"민지와 준서의 반박을 정리하고 {student_name}에게 반박할 기회를 주세요.\n"
+                f"민지가 실제로 한 말: \"{peer_a_said}\"\n"
+                f"준서가 실제로 한 말: \"{peer_b_said}\"\n"
+                f"패턴: \"민지는 [요약], 준서는 [요약]이라고 했어요. "
+                f"{student_name}, 누구 의견에 반박하고 싶어요?\"\n"
+                f"금지: 위 실제 발언에 없는 내용을 지어내지 마세요.\n"
+                f"{_CHAR_LIMIT}"
+            )
+        else:  # round >= 3
+            return (
+                f"민지와 준서의 결론을 정리하고 {student_name}에게 결론을 물어보세요.\n"
+                f"민지가 실제로 한 말: \"{peer_a_said}\"\n"
+                f"준서가 실제로 한 말: \"{peer_b_said}\"\n"
+                f"패턴: \"민지는 [요약], 준서는 [요약]이라고 결론 내렸어요. "
+                f"{student_name}, 결론을 말해 볼까요?\"\n"
+                f"금지: 위 실제 발언에 없는 내용을 지어내지 마세요.\n"
+                f"{_CHAR_LIMIT}"
+            )
+
+    # 폴백
+    return f"자연스럽게 발언하세요. {_CHAR_LIMIT}"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -188,7 +359,7 @@ def build_history_messages(state: DiscussionState) -> list[dict]:
 
 
 async def stream_agent_turn(
-    decision: DirectorDecision,
+    decision: TurnDecision,
     state: DiscussionState,
     out_queue: asyncio.Queue,  # type: ignore[type-arg]
 ) -> str:
@@ -201,7 +372,7 @@ async def stream_agent_turn(
     student_name = state.context.get("student_name", "학생")
     system_prompt = load_prompt(speaker, student_name=student_name)
 
-    # 지문·학생 정보를 시스템 프롬프트에 주입 (첫 턴부터 context 확보)
+    # 지문·학생 정보를 시스템 프롬프트에 주입
     passage = state.context.get("passage_content", "")
     if passage:
         system_prompt += f"\n\n[오늘 토의 지문]\n{passage}"
@@ -212,133 +383,14 @@ async def stream_agent_turn(
     if qr_lines:
         system_prompt += "\n\n[객관식 결과]\n" + "\n".join(qr_lines)
 
-    # ── 3단계 구조에 맞춘 발화 패턴 생성 ─────────────────────
-    CHAR_LIMIT = "공백 포함 50자 이내로 말하세요."
-    is_first_turn = not state.history
-    round_num = state.round
-    speakers_this_round = {t.speaker for t in state.history if t.round == round_num}
-    student_has_spoken = any(t.speaker == "user" and t.round == round_num for t in state.history)
-
-    # 직전 발언 인용 (peer 간 대화 연결용)
-    last_turn = state.history[-1] if state.history else None
-    last_speaker_label = ""
-    last_content_short = ""
-    if last_turn:
-        last_speaker_label = {"moderator": "선생님", "peer_a": "민지", "peer_b": "준서", "user": student_name}.get(last_turn.speaker, last_turn.speaker)
-        last_content_short = last_turn.content[:40]
-
-    if is_first_turn and speaker == "moderator":
-        instruction = (
-            f"자기소개 없이 바로 토의를 시작하세요.\n"
-            f"패턴: \"글에서 [구체적 장면/상황 설명]하는 장면이 나와요. [질문]? 민지부터 말해 볼까요?\"\n"
-            f"예시: \"글에서 급식실에서 음식을 많이 남기는 장면이 나와요. 음식물 쓰레기를 어떻게 줄일 수 있을까요? 민지부터 말해 볼까요?\"\n"
-            f"금지: 민지, 준서, {student_name}의 의견을 절대 미리 말하지 마세요. 아직 아무도 발언하지 않았습니다. 질문만 하세요.\n"
-            f"{CHAR_LIMIT}"
-        )
-    elif is_first_turn:
-        instruction = f"위 지문을 바탕으로 자신의 의견을 말하세요. {CHAR_LIMIT}"
-
-    # ── 1단계 대화 이력에서 각 참여자 의견 요약 (2·3단계 참조용) ──
-    r1_opinions: dict[str, str] = {}
-    for t in state.history:
-        if t.round == 1 and t.speaker in ("peer_a", "peer_b", "user"):
-            r1_opinions[t.speaker] = t.content[:50]
-
-    if round_num == 1:  # ── 1단계: 의견 나누기 ──────────────────
-        if speaker == "peer_a" and not student_has_spoken:
-            instruction = (
-                f"선생님이 소개한 주제에 대해 의견을 말하세요.\n"
-                f"패턴: \"저는 [의견]이라고 생각해요. 글에서 '[지문 근거 인용]'이라고 했거든요.\"\n"
-                f"예시: \"저는 조용히 해야 한다고 생각해요. 글에서 '다른 사람이 책을 읽고 있다'라고 했거든요.\"\n"
-                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
-            )
-        elif speaker == "peer_b" and not student_has_spoken:
-            instruction = (
-                f"민지의 의견에 자연스럽게 반응하며 자신의 의견을 말하세요.\n"
-                f"직전에 민지가 \"{last_content_short}\"라고 했습니다.\n"
-                f"민지 의견에 공감하면 동의+추가, 다르면 다른 생각을 말하세요. 내용에 맞게 자연스럽게 반응하세요.\n"
-                f"패턴: \"민지가 [요약]라고 했는데, [공감이면: 나도 그렇게 생각해 + 추가 의견 / 다르면: 나는 좀 달라 + 자기 의견]. [궁금한 점]?\"\n"
-                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
-            )
-        elif speaker == "moderator":
-            # 실제 발언 내용을 주입하여 hallucination 방지
-            peer_a_said = r1_opinions.get("peer_a", "")
-            peer_b_said = r1_opinions.get("peer_b", "")
-            instruction = (
-                f"민지와 준서가 방금 말한 내용을 있는 그대로 정리하고 {student_name}에게 의견을 물어보세요.\n"
-                f"민지가 실제로 한 말: \"{peer_a_said}\"\n"
-                f"준서가 실제로 한 말: \"{peer_b_said}\"\n"
-                f"패턴: \"민지는 [민지가 실제로 한 말 요약], 준서는 [준서가 실제로 한 말 요약]이라고 했어요. {student_name}, [의견을 묻는 질문]?\"\n"
-                f"금지: 위 실제 발언에 없는 내용을 추가하거나 지어내지 마세요.\n"
-                f"{CHAR_LIMIT}"
-            )
-        else:
-            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
-
-    elif round_num == 2:  # ── 2단계: 반박하기 ──────────────────────
-        # 1단계 의견 요약을 instruction에 포함하여 맥락 전달
-        r1_summary = ""
-        if r1_opinions:
-            parts = []
-            if "peer_a" in r1_opinions:
-                parts.append(f"민지: \"{r1_opinions['peer_a']}\"")
-            if "peer_b" in r1_opinions:
-                parts.append(f"준서: \"{r1_opinions['peer_b']}\"")
-            if "user" in r1_opinions:
-                parts.append(f"{student_name}: \"{r1_opinions['user']}\"")
-            r1_summary = "1단계 의견 정리: " + " / ".join(parts) + "\n"
-
-        if speaker == "moderator" and "moderator" not in speakers_this_round:
-            instruction = (
-                f"{r1_summary}"
-                f"1단계에서 나온 의견들을 구체적으로 정리하고 반박 단계를 안내하세요.\n"
-                f"패턴: \"민지는 [의견], 준서는 [의견], {student_name}은 [의견]이라고 했어요. 이제 서로 다른 생각이 있으면 반박해 볼까요? {student_name}, 누구 의견에 반박하고 싶어요?\"\n"
-                f"{CHAR_LIMIT}"
-            )
-        elif speaker == "peer_a" and not student_has_spoken:
-            instruction = (
-                f"{r1_summary}"
-                f"1단계에서 나온 의견 중 자신과 다른 의견 하나를 골라 지문 근거로 반박하세요.\n"
-                f"중요: 실제로 자신과 다른 의견만 반박하세요. 같은 의견이면 반박하지 마세요.\n"
-                f"패턴: \"[이름]이 [상대 의견]라고 했는데, 나는 좀 달라. 글에서 '[지문 근거]'라고 했거든.\"\n"
-                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
-            )
-        elif speaker == "peer_b" and not student_has_spoken:
-            instruction = (
-                f"{r1_summary}"
-                f"직전에 민지가 \"{last_content_short}\"라고 했습니다.\n"
-                f"민지의 반박 내용을 이해하고 자연스럽게 반응하세요. 공감이면 동의, 다르면 다른 의견을 말하세요.\n"
-                f"패턴: \"민지가 [요약]라고 했는데, [공감이면: 나도 그렇게 봐 / 다르면: 글쎄, 나는 ~인 것 같아]. [궁금한 점]?\"\n"
-                f"{student_name}에게 질문하지 마세요. {CHAR_LIMIT}"
-            )
-        else:
-            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
-
-    elif round_num >= 3:  # ── 3단계: 결론 내기 ──────────────────────
-        if speaker == "moderator" and "moderator" not in speakers_this_round:
-            instruction = (
-                f"토의 전체를 돌아보며 마무리를 안내하세요.\n"
-                f"패턴: \"[토의에서 어떤 이야기가 오갔는지 한마디 정리]. 이제 각자 결론을 말해 볼까요? 민지부터 해 볼까요?\"\n"
-                f"{CHAR_LIMIT}"
-            )
-        elif speaker == "peer_a":
-            instruction = (
-                f"토의를 통해 자신의 생각이 어떻게 정리되었는지 결론을 말하세요.\n"
-                f"패턴: \"나는 결국 [최종 결론]이라고 생각해. [토의 중 누구 말을 듣고 어떻게 생각이 정리되었는지].\"\n"
-                f"{CHAR_LIMIT}"
-            )
-        elif speaker == "peer_b":
-            instruction = (
-                f"민지 결론에 반응하며 자신의 결론을 말하세요.\n"
-                f"직전에 민지가 \"{last_content_short}\"라고 했습니다.\n"
-                f"패턴: \"민지 말 들으니까 [공감/다른 생각]. 나는 [자기 결론]. [토의에서 배운 점].\"\n"
-                f"{CHAR_LIMIT}"
-            )
-        else:
-            instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
-
-    else:
-        instruction = f"자연스럽게 발언하세요. {CHAR_LIMIT}"
+    # ── instruction 생성 ──────────────────────────────────
+    instruction = _build_instruction(
+        speaker=speaker,
+        step=state.round_turn_index,
+        round_num=state.round,
+        state=state,
+        student_name=student_name,
+    )
 
     messages: list[dict] = [
         {"role": "system", "content": system_prompt},
@@ -355,7 +407,7 @@ async def stream_agent_turn(
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
 
-    # ── P12: rate limit 재시도 (지수 백오프 2회) ─────────────
+    # ── rate limit 재시도 (지수 백오프 2회) ─────────────────
     _RATE_LIMIT_RETRIES = 2
     stream = None
     for _attempt in range(_RATE_LIMIT_RETRIES + 1):
@@ -369,11 +421,11 @@ async def stream_agent_turn(
                 max_tokens=120,
                 seed=seed,
             )
-            break  # 성공
+            break
         except OpenAIRateLimitError:
             if _attempt == _RATE_LIMIT_RETRIES:
-                raise  # 재시도 소진 → 호출자에서 llm_rate_limit 처리
-            _delay = 1.0 * (2 ** _attempt)  # 1s, 2s
+                raise
+            _delay = 1.0 * (2 ** _attempt)
             logger.warning(
                 "rate limit retry %d/%d in %.1fs: session=%s speaker=%s",
                 _attempt + 1, _RATE_LIMIT_RETRIES, _delay, state.session_id, speaker,
@@ -434,14 +486,11 @@ async def run_discussion(
     demo_mode: bool = False,
 ) -> AsyncGenerator[dict, None]:
     """
-    Director Loop 메인 루프. SSE 이벤트 dict를 yield한다.
+    고정 시퀀스 메인 루프. SSE 이벤트 dict를 yield한다.
 
-    흐름:
-      1. 학생 발화(user_content)가 있으면 DB에 저장
-      2. DB 전체 이력에서 DiscussionState 재구성
-      3. Director.decide(state) → 다음 행동 결정
-      4. AI 발화 → yield 이벤트 / 학생 대기 → yield + return / 종료 → yield is_final
-      5. demo_mode=True 이면 학생 턴 건너뛰고 3라운드 자가 완주
+    라운드당 흐름:
+      moderator(오프닝) → peer_a → peer_b → moderator(정리) → wait_for_user
+      × 3라운드 → close
     """
     # ── 1. 학생 발화 저장 ─────────────────────────────────
     if user_content and user_content.strip():
@@ -477,30 +526,21 @@ async def run_discussion(
         demo_mode=demo_mode,
     )
 
-    # ── 3. Director Loop ───────────────────────────────────
+    # ── 3. 고정 시퀀스 루프 ────────────────────────────────
     out_queue: asyncio.Queue = asyncio.Queue()
     _is_first_turn = True
-    pending_interrupt: str | None = None  # P9: 소프트 인터럽트 대기 텍스트
 
     while not state.is_final:
-        # P8: 첫 턴 제외, 다음 turn_start 전 0.5~1.2s 랜덤 지연 (사람 대화 리듬)
+        # 첫 턴 제외, 다음 turn_start 전 0.5~1.2s 랜덤 지연 (대화 리듬)
         if not _is_first_turn:
             await asyncio.sleep(0.5 + random.random() * 0.7)
         _is_first_turn = False
 
-        decision = await llm_decide(
-            _make_director_input(
-                state,
-                interrupted_by_user=pending_interrupt is not None,
-                interrupt_text=pending_interrupt or "",
-            )
-        )
-        pending_interrupt = None  # 소비 완료
+        decision = _next_decision(state)
 
         # ── 학생 대기 ──────────────────────────────────────
         if decision.next_speaker == "wait_for_user":
             if state.demo_mode:
-                # 데모 모드: 학생 턴 건너뛰고 다음 라운드
                 prev_round = state.round
                 state.advance_round()
                 yield {"type": "round_change", "from_round": prev_round, "to_round": state.round}
@@ -565,18 +605,18 @@ async def run_discussion(
             while not out_queue.empty():
                 yield out_queue.get_nowait()
 
-            # ── P9: 소프트 인터럽트 체크 (턴 사이에만) ─────
+            # ── 소프트 인터럽트 체크 (턴 사이) ─────────────
             ch = get_channel(session_id)
             if ch is not None and not ch.queue.empty():
                 try:
                     item = ch.queue.get_nowait()
                     itext = (item.get("text") or "").strip()
                     if itext:
-                        # turns 엔드포인트가 이미 DB 저장함 → 인메모리 상태만 갱신
                         state.history.append(TurnRecord("user", itext, state.round, "user"))
                         yield {"type": "user_input", "text": itext, "round": state.round}
-                        pending_interrupt = itext
-                        logger.debug("소프트 인터럽트 감지: session_id=%s text=%r", session_id, itext[:40])
+                        # 인터럽트 발생 → 현재 라운드를 학생이 발화한 것으로 처리, 다음 라운드로
+                        state.advance_round()
+                        logger.debug("소프트 인터럽트 → 라운드 전진: session_id=%s", session_id)
                 except asyncio.QueueEmpty:
                     pass
 

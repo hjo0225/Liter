@@ -95,27 +95,9 @@ async def _collect(gen: AsyncGenerator) -> list[dict]:
 async def test_s1_normal_flow():
     """학생이 모든 라운드 응답 → is_final + scores 이벤트 확인."""
     from app.services.discussion import run_discussion
-    from app.services.director import DirectorDecision
 
-    # 3라운드: 각 라운드마다 moderator→peer_a→peer_b→wait_for_user, 마지막 close
-    _DECISIONS = [
-        DirectorDecision(next_speaker="moderator", intent="summarize"),
-        DirectorDecision(next_speaker="peer_a",    intent="challenge"),
-        DirectorDecision(next_speaker="peer_b",    intent="ask_user"),
-        DirectorDecision(next_speaker="wait_for_user", intent="nudge"),  # round 1 대기
-        # round 2 (user_content 제공 후 재호출)
-        DirectorDecision(next_speaker="moderator", intent="summarize"),
-        DirectorDecision(next_speaker="peer_a",    intent="challenge"),
-        DirectorDecision(next_speaker="peer_b",    intent="ask_user"),
-        DirectorDecision(next_speaker="wait_for_user", intent="nudge"),
-        # round 3
-        DirectorDecision(next_speaker="moderator", intent="summarize"),
-        DirectorDecision(next_speaker="close",     intent="summarize"),
-    ]
-    _decision_iter = iter(_DECISIONS)
-
-    async def fake_decide(_inp):
-        return next(_decision_iter)
+    # 고정 시퀀스: 라운드당 moderator→peer_a→peer_b→moderator(정리)→wait_for_user
+    # Director LLM 없이 _next_decision이 자동으로 결정
 
     async def fake_stream_agent_turn(decision, state, out_queue):
         await out_queue.put({"type": "turn_start", "speaker": decision.next_speaker, "turn_id": "t1", "round": state.round})
@@ -130,11 +112,9 @@ async def test_s1_normal_flow():
         return {"score_reasoning": 8.0, "score_vocabulary": 7.5, "score_context": 8.5,
                 "feedback_reasoning": "잘했어요", "feedback_vocabulary": "좋아요", "feedback_context": "훌륭해요"}
 
-    # supabase mock: messages 테이블은 항상 빈 리스트, insert는 무시
     chain, exe = _make_supabase_chain([])
 
     with patch("app.services.discussion.supabase") as mock_sb, \
-         patch("app.services.discussion.llm_decide", side_effect=fake_decide), \
          patch("app.services.discussion.stream_agent_turn", side_effect=fake_stream_agent_turn), \
          patch("app.services.discussion.call_moderator_close", side_effect=fake_call_moderator_close), \
          patch("app.agents.feedback_agent.analyze_discussion", side_effect=fake_analyze), \
@@ -152,7 +132,7 @@ async def test_s1_normal_flow():
             "weak_areas": [],
         }
 
-        # 1라운드: 빈 user_content
+        # 1라운드: 빈 user_content → 4턴(M→A→B→M) 후 waiting_for_user
         events_r1 = await _collect(run_discussion(SESSION_ID, "", context, demo_mode=False))
         event_types_r1 = [e["type"] for e in events_r1]
         assert "waiting_for_user" in event_types_r1, f"round1: waiting_for_user 없음. 이벤트={event_types_r1}"
@@ -163,11 +143,16 @@ async def test_s1_normal_flow():
         event_types_r2 = [e["type"] for e in events_r2]
         assert "waiting_for_user" in event_types_r2, f"round2: waiting_for_user 없음"
 
-        # 3라운드: close → is_final
+        # 3라운드: 학생 답변 → 4턴 + waiting_for_user
         events_r3 = await _collect(run_discussion(SESSION_ID, "정말 재미있었어요.", context, demo_mode=False))
         event_types_r3 = [e["type"] for e in events_r3]
-        assert "is_final" in event_types_r3, f"round3: is_final 없음. 이벤트={event_types_r3}"
-        assert "scores" in event_types_r3, f"round3: scores 없음"
+        assert "waiting_for_user" in event_types_r3, f"round3: waiting_for_user 없음"
+
+        # 4번째 호출: round 4 > MAX(3) → close → is_final
+        events_r4 = await _collect(run_discussion(SESSION_ID, "결론이에요.", context, demo_mode=False))
+        event_types_r4 = [e["type"] for e in events_r4]
+        assert "is_final" in event_types_r4, f"round4: is_final 없음. 이벤트={event_types_r4}"
+        assert "scores" in event_types_r4, f"round4: scores 없음"
 
     print("✓ S1: 정상 흐름 — 3라운드 완주 후 is_final + scores 확인")
 
@@ -207,9 +192,8 @@ async def test_s2_silence_flow():
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 async def test_s3_interrupt_flow():
-    """AI 발화 중 학생 입력 → user_input 이벤트 + pending_interrupt 전달 확인."""
+    """AI 발화 중 학생 입력 → user_input 이벤트 + 라운드 전진 확인."""
     from app.services.discussion import run_discussion, DiscussionState
-    from app.services.director import DirectorDecision
     from app.core.state import SessionChannel
 
     interrupt_text = "잠깐, 저 하고 싶은 말이 있어요!"
@@ -217,20 +201,6 @@ async def test_s3_interrupt_flow():
     # 채널: AI 턴 직후 큐에 학생 입력이 들어있음
     ch = SessionChannel()
     ch.queue.put_nowait({"text": interrupt_text})
-
-    _decisions = iter([
-        DirectorDecision(next_speaker="moderator", intent="summarize"),
-        # 인터럽트 후 director가 acknowledge 결정 (가드 테스트용으로 moderator로 리다이렉트)
-        DirectorDecision(next_speaker="moderator", intent="acknowledge"),
-        DirectorDecision(next_speaker="wait_for_user", intent="nudge"),
-    ])
-
-    async def fake_decide(inp):
-        d = next(_decisions)
-        if inp.interrupted_by_user:
-            # 인터럽트 감지 확인
-            assert inp.interrupt_text == interrupt_text, "interrupt_text 불일치"
-        return d
 
     async def fake_stream(decision, state, out_queue):
         await out_queue.put({"type": "turn_start", "speaker": decision.next_speaker, "turn_id": "t1", "round": state.round})
@@ -240,7 +210,6 @@ async def test_s3_interrupt_flow():
     chain, exe = _make_supabase_chain([])
 
     with patch("app.services.discussion.supabase") as mock_sb, \
-         patch("app.services.discussion.llm_decide", side_effect=fake_decide), \
          patch("app.services.discussion.stream_agent_turn", side_effect=fake_stream), \
          patch("app.services.discussion.alog_llm_call", new_callable=AsyncMock), \
          patch("app.services.discussion.get_channel", return_value=ch):
@@ -257,7 +226,7 @@ async def test_s3_interrupt_flow():
     user_input_event = next(e for e in events if e["type"] == "user_input")
     assert user_input_event["text"] == interrupt_text
 
-    print("✓ S3: 인터럽트 흐름 — AI 발화 후 user_input 이벤트 + director에 interrupt 전달")
+    print("✓ S3: 인터럽트 흐름 — AI 발화 후 user_input 이벤트 + 라운드 전진")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -394,7 +363,6 @@ async def test_s7_llm_failure():
     """OpenAI 인증 실패 → run_discussion에서 error(code=llm_failure) 이벤트 발생."""
     from openai import AuthenticationError
     from app.services.discussion import run_discussion
-    from app.services.director import DirectorDecision
 
     auth_error = AuthenticationError(
         message="Incorrect API key",
@@ -406,16 +374,12 @@ async def test_s7_llm_failure():
         body={"error": {"message": "Incorrect API key"}},
     )
 
-    async def fake_decide(_inp):
-        return DirectorDecision(next_speaker="moderator", intent="summarize")
-
     async def failing_stream_agent_turn(decision, state, out_queue):
         raise auth_error
 
     chain, exe = _make_supabase_chain([])
 
     with patch("app.services.discussion.supabase") as mock_sb, \
-         patch("app.services.discussion.llm_decide", side_effect=fake_decide), \
          patch("app.services.discussion.stream_agent_turn", side_effect=failing_stream_agent_turn), \
          patch("app.services.discussion.alog_llm_call", new_callable=AsyncMock), \
          patch("app.services.discussion.get_channel", return_value=None):
@@ -484,7 +448,6 @@ async def test_s9_openai_rate_limit():
     """
     from openai import RateLimitError
     from app.services.discussion import run_discussion, stream_agent_turn
-    from app.services.director import DirectorDecision
 
     rate_limit_err = _make_openai_rate_limit_error()
     call_count = 0
@@ -494,10 +457,6 @@ async def test_s9_openai_rate_limit():
         call_count += 1
         raise rate_limit_err
 
-    # stream_agent_turn 의 재시도 로직만 검증 (asyncio.sleep 도 mock)
-    async def fake_decide(_inp):
-        return DirectorDecision(next_speaker="moderator", intent="summarize")
-
     chain, exe = _make_supabase_chain([])
     sleep_calls: list[float] = []
 
@@ -505,7 +464,6 @@ async def test_s9_openai_rate_limit():
         sleep_calls.append(delay)
 
     with patch("app.services.discussion.supabase") as mock_sb, \
-         patch("app.services.discussion.llm_decide", side_effect=fake_decide), \
          patch("app.services.discussion._async_client") as mock_client, \
          patch("app.services.discussion.asyncio.sleep", side_effect=fake_sleep), \
          patch("app.services.discussion.alog_llm_call", new_callable=AsyncMock), \
