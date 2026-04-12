@@ -47,19 +47,7 @@ function sendAbandonBeacon() {
 }
 
 onMounted(() => {
-  if (!sessionStore.sessionId) {
-    router.replace('/student/home')
-    return
-  }
-  if (sessionStore.phase === 'reading' || sessionStore.phase === 'mcq') {
-    router.replace('/student/session')
-    return
-  }
-  if (sessionStore.phase === 'done') {
-    router.replace('/student/result')
-    return
-  }
-  sessionStore.setPhase('discussion')
+  if (!sessionStore.sessionId) { router.replace('/student/home'); return }
   ds.reset()
   window.addEventListener('beforeunload', sendAbandonBeacon)
   window.addEventListener('pagehide', sendAbandonBeacon)
@@ -99,7 +87,6 @@ async function endSession() {
     sessionStore.setScores(res.data)
     router.push('/student/result')
   } catch {
-    sessionStore.reset()
     router.push('/student/home')
   }
 }

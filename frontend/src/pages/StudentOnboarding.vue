@@ -15,7 +15,7 @@ const error = ref<string | null>(null)
 
 // 자동 대문자
 watch(joinCode, (val) => {
-  joinCode.value = val.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+  joinCode.value = val.toUpperCase()
 })
 
 const canSubmit = computed(() => joinCode.value.length === 6 && name.value.trim().length > 0)

@@ -54,23 +54,14 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  const teacherStore = useTeacherStore()
-  const studentStore = useStudentStore()
-
-  if (to.path === '/teacher' && teacherStore.token) {
-    return { path: '/teacher/classrooms' }
-  }
-
-  if (to.path === '/student/join' && studentStore.token) {
-    return { path: '/student/home' }
-  }
-
   if (to.meta.requiresTeacherAuth) {
-    if (!teacherStore.token) return { path: '/teacher' }
+    const { token } = useTeacherStore()
+    if (!token) return { path: '/teacher' }
   }
 
   if (to.meta.requiresStudentAuth) {
-    if (!studentStore.token) return { path: '/student/join' }
+    const { token } = useStudentStore()
+    if (!token) return { path: '/student/join' }
   }
 })
 

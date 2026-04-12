@@ -43,73 +43,20 @@ export interface QuestionResult {
 
 export type SessionPhase = 'idle' | 'reading' | 'mcq' | 'discussion' | 'done'
 
-interface PersistedSessionState {
-  sessionId: string | null
-  passage: Passage | null
-  questions: Question[]
-  currentQuestionIndex: number
-  answers: (number | null)[]
-  phase: SessionPhase
-  allCorrect: boolean | null
-  discussionMessages: DiscussionMessage[]
-  scores: SessionScores | null
-}
-
-const STORAGE_KEY = 'liter_session_state'
-
-function loadPersistedState(): PersistedSessionState | null {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return null
-
-  try {
-    return JSON.parse(raw) as PersistedSessionState
-  } catch {
-    localStorage.removeItem(STORAGE_KEY)
-    return null
-  }
-}
-
 export const useSessionStore = defineStore('session', () => {
-  const persisted = loadPersistedState()
-
-  const sessionId = ref<string | null>(persisted?.sessionId ?? null)
-  const passage = ref<Passage | null>(persisted?.passage ?? null)
-  const questions = ref<Question[]>(persisted?.questions ?? [])
-  const currentQuestionIndex = ref(persisted?.currentQuestionIndex ?? 0)
-  const answers = ref<(number | null)[]>(
-    persisted?.answers ?? [],
-  )
-  const phase = ref<SessionPhase>(persisted?.phase ?? 'idle')
+  const sessionId = ref<string | null>(null)
+  const passage = ref<Passage | null>(null)
+  const questions = ref<Question[]>([])
+  const currentQuestionIndex = ref(0) // 0-based
+  const answers = ref<(number | null)[]>([null, null, null])
+  const phase = ref<SessionPhase>('idle')
 
   // 토의 상태
-  const allCorrect = ref<boolean | null>(persisted?.allCorrect ?? null)
-  const discussionMessages = ref<DiscussionMessage[]>(
-    persisted?.discussionMessages ?? [],
-  )
-  const scores = ref<SessionScores | null>(persisted?.scores ?? null)
+  const allCorrect = ref<boolean | null>(null)
+  const discussionMessages = ref<DiscussionMessage[]>([])
+  const scores = ref<SessionScores | null>(null)
 
   let _msgIdCounter = 0
-
-  function persist() {
-    if (!sessionId.value || phase.value === 'idle') {
-      localStorage.removeItem(STORAGE_KEY)
-      return
-    }
-
-    const state: PersistedSessionState = {
-      sessionId: sessionId.value,
-      passage: passage.value,
-      questions: questions.value,
-      currentQuestionIndex: currentQuestionIndex.value,
-      answers: answers.value,
-      phase: phase.value,
-      allCorrect: allCorrect.value,
-      discussionMessages: discussionMessages.value,
-      scores: scores.value,
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  }
 
   function startSession(data: {
     session_id: string
@@ -120,45 +67,37 @@ export const useSessionStore = defineStore('session', () => {
     passage.value = data.passage
     questions.value = data.questions
     currentQuestionIndex.value = 0
-    answers.value = Array.from({ length: data.questions.length }, () => null)
+    answers.value = [null, null, null]
     phase.value = 'reading'
     allCorrect.value = null
     discussionMessages.value = []
     scores.value = null
     _msgIdCounter = 0
-    persist()
   }
 
   function goToMcq() {
     phase.value = 'mcq'
-    persist()
   }
 
   function recordAnswer(questionIndex: number, selectedIndex: number) {
-    const index = questionIndex - 1
-    if (index < 0 || index >= answers.value.length) return
-    answers.value[index] = selectedIndex
-    persist()
+    answers.value[questionIndex] = selectedIndex
   }
 
   function nextQuestion() {
-    if (currentQuestionIndex.value < questions.value.length - 1) {
+    if (currentQuestionIndex.value < 2) {
       currentQuestionIndex.value++
     } else {
       phase.value = 'discussion'
     }
-    persist()
   }
 
   function addDiscussionMessage(msg: Omit<DiscussionMessage, 'id'>) {
     discussionMessages.value.push({ ...msg, id: ++_msgIdCounter })
-    persist()
   }
 
   function setScores(data: SessionScores) {
     scores.value = data
     phase.value = 'done'
-    persist()
   }
 
   function reset() {
@@ -166,22 +105,12 @@ export const useSessionStore = defineStore('session', () => {
     passage.value = null
     questions.value = []
     currentQuestionIndex.value = 0
-    answers.value = []
+    answers.value = [null, null, null]
     phase.value = 'idle'
     allCorrect.value = null
     discussionMessages.value = []
     scores.value = null
     _msgIdCounter = 0
-    localStorage.removeItem(STORAGE_KEY)
-  }
-
-  function setPhase(nextPhase: SessionPhase) {
-    phase.value = nextPhase
-    persist()
-  }
-
-  function hasActiveSession() {
-    return Boolean(sessionId.value && phase.value !== 'idle' && phase.value !== 'done')
   }
 
   return {
@@ -200,8 +129,6 @@ export const useSessionStore = defineStore('session', () => {
     nextQuestion,
     addDiscussionMessage,
     setScores,
-    setPhase,
-    hasActiveSession,
     reset,
   }
 })

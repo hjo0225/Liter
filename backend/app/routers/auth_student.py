@@ -1,7 +1,11 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, HTTPException, status
+from jose import jwt
 from pydantic import BaseModel
 
-from app.core.auth import issue_student_token
+from app.core.config import settings
+from app.core.constants import STUDENT_TOKEN_EXPIRE_DAYS
 from app.core.supabase import supabase
 
 router = APIRouter(prefix="/auth/student", tags=["auth-student"])
@@ -15,6 +19,16 @@ class StudentJoinRequest(BaseModel):
 class StudentJoinResponse(BaseModel):
     student_id: str
     access_token: str
+
+
+def _issue_student_token(student_id: str) -> str:
+    exp = datetime.now(timezone.utc) + timedelta(days=STUDENT_TOKEN_EXPIRE_DAYS)
+    return jwt.encode(
+        {"sub": student_id, "type": "student", "exp": exp},
+        settings.JWT_SECRET,
+        algorithm="HS256",
+    )
+
 
 @router.post("/join", response_model=StudentJoinResponse, status_code=status.HTTP_200_OK)
 def student_join(body: StudentJoinRequest):

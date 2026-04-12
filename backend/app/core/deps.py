@@ -2,8 +2,8 @@ import logging
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
 
-from app.core.auth import JWTError, decode_student_token
 from app.core.config import settings
 from app.core.supabase import supabase, supabase_anon
 from app.schemas.auth import TeacherProfile
@@ -11,14 +11,6 @@ from app.schemas.auth import TeacherProfile
 logger = logging.getLogger("uvicorn.error")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/teacher/login")
-
-
-def _raise_invalid_token() -> None:
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="INVALID_TOKEN",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
 
 
 def get_current_teacher(token: str = Depends(oauth2_scheme)) -> TeacherProfile:
@@ -42,16 +34,40 @@ def get_current_teacher(token: str = Depends(oauth2_scheme)) -> TeacherProfile:
             name=teacher.data["name"],
         )
     except Exception:
-        _raise_invalid_token()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INVALID_TOKEN",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 def get_current_student(token: str = Depends(oauth2_scheme)) -> str:
     """커스텀 student JWT 검증 → student_id (sub) 반환."""
     try:
-        return decode_student_token(token)
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+        if payload.get("type") != "student":
+            logger.warning("[AUTH] student token rejected: type=%s", payload.get("type"))
+            raise ValueError("not a student token")
+        student_id: str | None = payload.get("sub")
+        if not student_id:
+            raise ValueError("missing sub")
+        return student_id
     except JWTError as e:
         logger.warning("[AUTH] student JWT decode failed: %s | secret_set=%s", e, bool(settings.JWT_SECRET))
-        _raise_invalid_token()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INVALID_TOKEN",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     except ValueError as e:
         logger.warning("[AUTH] student token invalid: %s", e)
-        _raise_invalid_token()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="INVALID_TOKEN",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
