@@ -1,4 +1,4 @@
-# Liter (리터) — 멀티에이전트 기반 초개인화 문해력 교육 플랫폼
+# Tododok — 멀티에이전트 기반 초개인화 문해력 교육 플랫폼
 
 > **한 줄 요약:** 정답 확인으로 끝나는 기존 문해력 학습의 한계를 넘어, 또래 AI 에이전트와의 독서 토의로 초등학생의 추론·어휘·맥락 파악 능력을 향상시키는 교육 플랫폼
 
@@ -38,7 +38,7 @@
 
 ### 핵심 가치
 
-또래 AI 에이전트 그룹과의 독서 토의를 통해 학생이 *왜* 그렇게 생각했는지를 대화 기반으로 드러내고, **추론력·어휘력·맥락 파악** 세 축으로 개인 취약 영역을 정밀 진단합니다.
+또래 AI 에이전트 그룹과의 독서 토의를 통해 학생이 _왜_ 그렇게 생각했는지를 대화 기반으로 드러내고, **추론력·어휘력·맥락 파악** 세 축으로 개인 취약 영역을 정밀 진단합니다.
 
 ### 배포 URL
 
@@ -47,10 +47,10 @@
 
 ### 사용자
 
-| 사용자 | 목적 | 접속 방식 |
-|--------|------|-----------|
-| 학생 (초등 4~6학년) | 매일 세션 수행, 문해력 향상, streak 유지 | 교사 발급 참여코드(join_code) 입력 |
-| 담임교사 | 학급 모니터링, 취약 영역 확인, 난이도 조정 | 이메일 OTP 회원가입·로그인 |
+| 사용자              | 목적                                       | 접속 방식                          |
+| ------------------- | ------------------------------------------ | ---------------------------------- |
+| 학생 (초등 4~6학년) | 매일 세션 수행, 문해력 향상, streak 유지   | 교사 발급 참여코드(join_code) 입력 |
+| 담임교사            | 학급 모니터링, 취약 영역 확인, 난이도 조정 | 이메일 OTP 회원가입·로그인         |
 
 ---
 
@@ -113,11 +113,11 @@ Director LLM 없이 **고정 시퀀스**로 턴을 결정합니다. 라운드당
 
 ### 에이전트 캐릭터
 
-| 역할 | 이름 | 성격 | 프롬프트 |
-|------|------|------|----------|
+| 역할      | 이름            | 성격                      | 프롬프트               |
+| --------- | --------------- | ------------------------- | ---------------------- |
 | moderator | 선생님 (사회자) | 중립적, 진행 역할, 존댓말 | `prompts/moderator.md` |
-| peer_a | 민지 | 적극적, 의견 주장형 | `prompts/peer_a.md` |
-| peer_b | 준서 | 소극적, 질문형 | `prompts/peer_b.md` |
+| peer_a    | 민지            | 적극적, 의견 주장형       | `prompts/peer_a.md`    |
+| peer_b    | 준서            | 소극적, 질문형            | `prompts/peer_b.md`    |
 
 ---
 
@@ -303,15 +303,15 @@ KIT 바이브코딩 공모전/
 
 ### 필수 환경 변수
 
-| 변수 | 설명 | 필요 위치 |
-|------|------|-----------|
-| `SUPABASE_URL` | Supabase 프로젝트 URL | Backend |
-| `SUPABASE_ANON_KEY` | Supabase anon public key | Backend |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (서버 전용) | Backend |
-| `OPENAI_API_KEY` | OpenAI API 키 | Backend |
-| `JWT_SECRET` | JWT 서명 비밀키 | Backend |
-| `APP_ENV` | 실행 환경 (`dev` / `prod`) | Backend |
-| `VITE_API_BASE_URL` | 프론트에서 바라볼 백엔드 URL | Frontend |
+| 변수                        | 설명                                  | 필요 위치 |
+| --------------------------- | ------------------------------------- | --------- |
+| `SUPABASE_URL`              | Supabase 프로젝트 URL                 | Backend   |
+| `SUPABASE_ANON_KEY`         | Supabase anon public key              | Backend   |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (서버 전용) | Backend   |
+| `OPENAI_API_KEY`            | OpenAI API 키                         | Backend   |
+| `JWT_SECRET`                | JWT 서명 비밀키                       | Backend   |
+| `APP_ENV`                   | 실행 환경 (`dev` / `prod`)            | Backend   |
+| `VITE_API_BASE_URL`         | 프론트에서 바라볼 백엔드 URL          | Frontend  |
 
 ### Local 개발
 
@@ -351,35 +351,35 @@ docker run -p 8080:8080 \
 
 ### 인증
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `POST` | `/api/v1/auth/teacher/signup` | 교사 회원가입 |
-| `POST` | `/api/v1/auth/teacher/verify-otp` | 교사 OTP 인증 |
-| `POST` | `/api/v1/auth/student/join` | 학생 참여코드 → JWT |
+| Method | Path                              | 설명                |
+| ------ | --------------------------------- | ------------------- |
+| `POST` | `/api/v1/auth/teacher/signup`     | 교사 회원가입       |
+| `POST` | `/api/v1/auth/teacher/verify-otp` | 교사 OTP 인증       |
+| `POST` | `/api/v1/auth/student/join`       | 학생 참여코드 → JWT |
 
 ### 학생
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `GET` | `/api/v1/student/me` | 학생 프로필 조회 |
-| `POST` | `/api/v1/student/sessions` | 세션 시작 |
-| `POST` | `/api/v1/student/sessions/{id}/answers` | 퀴즈 답안 제출 |
-| `GET` | `/api/v1/student/sessions/{id}/discussion` | SSE 토의 스트림 |
-| `POST` | `/api/v1/student/sessions/{id}/discussion/turns` | 학생 발화 입력 |
+| Method | Path                                             | 설명             |
+| ------ | ------------------------------------------------ | ---------------- |
+| `GET`  | `/api/v1/student/me`                             | 학생 프로필 조회 |
+| `POST` | `/api/v1/student/sessions`                       | 세션 시작        |
+| `POST` | `/api/v1/student/sessions/{id}/answers`          | 퀴즈 답안 제출   |
+| `GET`  | `/api/v1/student/sessions/{id}/discussion`       | SSE 토의 스트림  |
+| `POST` | `/api/v1/student/sessions/{id}/discussion/turns` | 학생 발화 입력   |
 
 ### 교사
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `GET` | `/api/v1/teacher/classrooms` | 학급 목록 조회 |
-| `GET` | `/api/v1/teacher/classrooms/{id}` | 학급 상세 + 학생 분석 |
+| Method | Path                              | 설명                  |
+| ------ | --------------------------------- | --------------------- |
+| `GET`  | `/api/v1/teacher/classrooms`      | 학급 목록 조회        |
+| `GET`  | `/api/v1/teacher/classrooms/{id}` | 학급 상세 + 학생 분석 |
 
 ### 내부 (Cron)
 
-| Method | Path | 설명 |
-|--------|------|------|
-| `POST` | `/api/v1/internal/cleanup-abandoned-sessions` | 방치 세션 정리 |
-| `POST` | `/api/v1/internal/adjust-levels` | 자동 레벨 재조정 |
+| Method | Path                                          | 설명             |
+| ------ | --------------------------------------------- | ---------------- |
+| `POST` | `/api/v1/internal/cleanup-abandoned-sessions` | 방치 세션 정리   |
+| `POST` | `/api/v1/internal/adjust-levels`              | 자동 레벨 재조정 |
 
 ---
 
@@ -397,15 +397,15 @@ teachers       — id, email, password_hash, classroom_id
 
 ### 주요 상수
 
-| 상수 | 값 | 설명 |
-|------|-----|------|
-| `DAILY_SESSION_LIMIT` | 3 | 일일 세션 제한 |
-| `MAX_DISCUSSION_TOPICS` | 3 | 토의 라운드 수 |
-| `LEVEL_UP_THRESHOLD` | 8.0 | 레벨업 기준 점수 |
-| `LEVEL_DOWN_THRESHOLD` | 5.0 | 레벨다운 기준 점수 |
-| `MIN_LEVEL` / `MAX_LEVEL` | 1 / 3 | 난이도 범위 |
-| `SESSION_TIMEOUT_MINUTES` | 60 | 유휴 세션 만료 (분) |
-| `SESSIONS_FOR_LEVEL_ADJUST` | 3 | 레벨 조정 기준 세션 수 |
+| 상수                        | 값    | 설명                   |
+| --------------------------- | ----- | ---------------------- |
+| `DAILY_SESSION_LIMIT`       | 3     | 일일 세션 제한         |
+| `MAX_DISCUSSION_TOPICS`     | 3     | 토의 라운드 수         |
+| `LEVEL_UP_THRESHOLD`        | 8.0   | 레벨업 기준 점수       |
+| `LEVEL_DOWN_THRESHOLD`      | 5.0   | 레벨다운 기준 점수     |
+| `MIN_LEVEL` / `MAX_LEVEL`   | 1 / 3 | 난이도 범위            |
+| `SESSION_TIMEOUT_MINUTES`   | 60    | 유휴 세션 만료 (분)    |
+| `SESSIONS_FOR_LEVEL_ADJUST` | 3     | 레벨 조정 기준 세션 수 |
 
 ---
 
@@ -413,27 +413,29 @@ teachers       — id, email, password_hash, classroom_id
 
 ### CI/CD (GitHub Actions)
 
-| 워크플로우 | 트리거 | 동작 |
-|-----------|--------|------|
-| `deploy-backend.yml` | `backend/**` 변경 | Docker 빌드 → GCP Artifact Registry → Cloud Run 배포 (asia-northeast3) |
-| `deploy-frontend.yml` | `frontend/**` 변경 | Vercel 프로덕션 배포 |
+| 워크플로우            | 트리거             | 동작                                                                   |
+| --------------------- | ------------------ | ---------------------------------------------------------------------- |
+| `deploy-backend.yml`  | `backend/**` 변경  | Docker 빌드 → GCP Artifact Registry → Cloud Run 배포 (asia-northeast3) |
+| `deploy-frontend.yml` | `frontend/**` 변경 | Vercel 프로덕션 배포                                                   |
 
 ### 테스트
 
-| 종류 | 위치 | 설명 |
-|------|------|------|
-| 단위 테스트 | `backend/tests/` | Pytest — 에이전트 시나리오 테스트 |
-| E2E 테스트 | `frontend/e2e/` | Playwright — 학생 세션, 교사 대시보드 플로우 |
+| 종류        | 위치             | 설명                                         |
+| ----------- | ---------------- | -------------------------------------------- |
+| 단위 테스트 | `backend/tests/` | Pytest — 에이전트 시나리오 테스트            |
+| E2E 테스트  | `frontend/e2e/`  | Playwright — 학생 세션, 교사 대시보드 플로우 |
 
 ### 기술 스택 상세
 
 **Backend:**
+
 - FastAPI 0.115 + uvicorn 0.30
 - Supabase SDK 2.10 (PostgreSQL + Auth)
 - OpenAI SDK 1.75 (`gpt-4o-mini`)
 - python-jose (JWT), httpx, pydantic-settings
 
 **Frontend:**
+
 - Vue 3.5 + TypeScript 6.0 + Vite 8.0
 - Pinia 3.0 (상태 관리)
 - TailwindCSS 4.2
