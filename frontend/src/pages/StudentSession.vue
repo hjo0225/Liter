@@ -63,6 +63,17 @@ onMounted(() => {
     router.replace('/student/home')
     return
   }
+  if (sessionStore.phase === 'discussion') {
+    router.replace('/student/discussion')
+    return
+  }
+  if (sessionStore.phase === 'done') {
+    router.replace('/student/result')
+    return
+  }
+  if (sessionStore.phase === 'mcq' && !questionShownAt.value) {
+    questionShownAt.value = new Date().toISOString()
+  }
   window.addEventListener('beforeunload', sendAbandonBeacon)
   window.addEventListener('pagehide', sendAbandonBeacon)
 })
@@ -92,7 +103,7 @@ function handleFinishedReading() {
 }
 
 function handleBackToReading() {
-  sessionStore.phase = 'reading'
+  sessionStore.setPhase('reading')
   selectedChoice.value = null
   answerError.value = null
 }
@@ -115,7 +126,7 @@ async function handleConfirm() {
       shown_at: questionShownAt.value,
       answered_at: new Date().toISOString(),
     })
-    sessionStore.recordAnswer(sessionStore.currentQuestionIndex, selectedChoice.value)
+    sessionStore.recordAnswer(currentQuestion.value.index, selectedChoice.value)
 
     // 피드백 표시 후 다음으로 이동
     feedbackIsCorrect.value = data.is_correct

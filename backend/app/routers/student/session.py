@@ -3,12 +3,11 @@ import random
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from jose import JWTError, jwt
 from pydantic import BaseModel
 
 from app.agents.diagnosis_agent import diagnose_student
 from app.agents.passage_agent import generate_passage_and_questions
-from app.core.config import settings
+from app.core.auth import JWTError, decode_student_token
 from app.core.constants import DAILY_SESSION_LIMIT
 from app.core.deps import get_current_student
 from app.core.supabase import supabase
@@ -458,19 +457,11 @@ def abandon_session_beacon(
     """
     # 토큰 검증
     try:
-        payload = jwt.decode(
-            body.token,
-            settings.JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-        if payload.get("type") != "student":
-            return Response(status_code=403)
-        student_id: str | None = payload.get("sub")
-        if not student_id:
-            return Response(status_code=403)
+        student_id = decode_student_token(body.token)
     except JWTError:
         return Response(status_code=401)
+    except ValueError:
+        return Response(status_code=403)
 
     session_res = (
         supabase.table("sessions")

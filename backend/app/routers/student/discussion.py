@@ -19,9 +19,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
-from jose import JWTError, jwt
 
-from app.core.config import settings
+from app.core.auth import JWTError, decode_student_token
 from app.core.deps import get_current_student
 from app.core.llm_logging import log_session_event
 from app.core.state import create_channel, remove_channel
@@ -78,18 +77,7 @@ def _error(code: str, message: str = "") -> str:
 def _decode_student_token(token: str) -> str:
     """JWT 검증 → student_id 반환. 실패 시 HTTPException."""
     try:
-        payload = jwt.decode(
-            token,
-            settings.JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
-        if payload.get("type") != "student":
-            raise ValueError("not a student token")
-        student_id: str | None = payload.get("sub")
-        if not student_id:
-            raise ValueError("missing sub")
-        return student_id
+        return decode_student_token(token)
     except (JWTError, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="INVALID_TOKEN") from e
 

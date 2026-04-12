@@ -53,6 +53,17 @@ const classroomName = computed(() => me.value?.classroom_name ?? '우리 학급'
 const limitReached = computed(() => todayCount.value >= 3)
 const sessionsLeft = computed(() => Math.max(0, 3 - todayCount.value))
 const progressPercent = computed(() => Math.min(100, (todayCount.value / 3) * 100))
+const hasActiveSession = computed(() => sessionStore.hasActiveSession())
+const resumePath = computed(() => {
+  if (sessionStore.phase === 'discussion') return '/student/discussion'
+  if (sessionStore.phase === 'done') return '/student/result'
+  return '/student/session'
+})
+const startButtonLabel = computed(() => {
+  if (starting.value) return '준비 중...'
+  if (hasActiveSession.value) return '이어서 학습'
+  return '학습 시작'
+})
 
 const focusMap: Record<string, FocusCard> = {
   info: {
@@ -84,6 +95,15 @@ const focusCard = computed<FocusCard>(() => {
   return defaultFocus
 })
 const statusMessage = computed(() => {
+  if (hasActiveSession.value) {
+    if (sessionStore.phase === 'discussion') {
+      return '토의를 진행하던 세션이 남아 있어요. 이어서 들어가면 바로 계속할 수 있습니다.'
+    }
+    if (sessionStore.phase === 'mcq') {
+      return '문제를 풀던 세션이 남아 있어요. 같은 지문과 문항으로 이어서 진행할 수 있습니다.'
+    }
+    return '읽기 중이던 세션이 남아 있어요. 이어서 들어가면 흐름이 끊기지 않습니다.'
+  }
   if (limitReached.value) {
     return '오늘 학습을 모두 완료했어요. 내일 streak를 이어가면 됩니다.'
   }
@@ -141,6 +161,10 @@ onMounted(async () => {
 })
 
 async function handleStart() {
+  if (hasActiveSession.value) {
+    router.push(resumePath.value)
+    return
+  }
   if (limitReached.value) return
   error.value = null
   starting.value = true
@@ -223,7 +247,7 @@ function handleLogout() {
                 :disabled="starting || loading"
                 @click="handleStart"
               >
-                {{ starting ? '준비 중...' : '학습 시작' }}
+                {{ startButtonLabel }}
                 <ArrowRight :size="16" />
               </button>
               <div

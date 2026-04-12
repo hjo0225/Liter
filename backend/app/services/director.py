@@ -19,7 +19,7 @@ import time
 from typing import Literal
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import settings
 from app.core.constants import MAX_DISCUSSION_TOPICS
@@ -46,10 +46,10 @@ class DirectorInput(BaseModel):
     round: int
     round_turn_index: int
     last_speaker: str | None = None
-    recent_speakers: list[str] = []    # 최근 5턴 발화자 목록
-    recent_summary: list[str] = []     # 최근 5턴 "speaker: 내용앞40자"
+    recent_speakers: list[str] = Field(default_factory=list)    # 최근 5턴 발화자 목록
+    recent_summary: list[str] = Field(default_factory=list)     # 최근 5턴 "speaker: 내용앞40자"
     all_correct: bool = False
-    weak_areas: list[str] = []
+    weak_areas: list[str] = Field(default_factory=list)
     demo_mode: bool = False
     max_rounds: int = MAX_DISCUSSION_TOPICS
     interrupted_by_user: bool = False   # 학생 끼어들기 발생
