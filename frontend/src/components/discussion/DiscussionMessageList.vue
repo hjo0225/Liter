@@ -60,7 +60,7 @@ defineExpose({ scrollToBottom })
       <!-- 내 메시지: 오른쪽 정렬 -->
       <div v-if="msg.speaker === 'user'" class="flex justify-end gap-2 items-end">
         <div
-          class="max-w-xs rounded-2xl px-4 py-3 text-[17px] leading-relaxed font-medium"
+          class="max-w-[75%] rounded-2xl px-4 py-3 text-[17px] leading-relaxed font-medium"
           style="background: #3182F6; color: #fff; border-radius: 14px 14px 4px 14px;"
         >
           {{ msg.content }}
@@ -86,7 +86,7 @@ defineExpose({ scrollToBottom })
             {{ SPEAKERS[msg.speaker].name }}
           </span>
           <div
-            class="max-w-xs text-[17px] leading-relaxed"
+            class="max-w-[75%] text-[17px] leading-relaxed"
             style="background: #fff; border: 1.5px solid #E5E8EB; border-radius: 14px 14px 14px 4px; padding: 12px 16px; color: #4E5968;"
           >
             <!-- 타이핑 인디케이터: 말풍선 안 3개 점 -->
