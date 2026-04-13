@@ -324,14 +324,14 @@ const sessionFlow: SessionStep[] = [
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
   { isArrow: false, icon: NotebookPen, step: '단계 2', title: '객관식 문항', desc: '3지선다 3문제\n정보·추론·어휘', color: '#E8F0FD', textColor: '#1B438A', iconBg: 'rgba(255,255,255,0.7)', iconColor: '#1B438A' },
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
-  { isArrow: false, icon: MessageCircleMore, step: '단계 3', title: 'AI 그룹 토의', desc: '모더레이터·민지·준서\n주제 3개', color: '#DDE8FC', textColor: '#163674', iconBg: 'rgba(255,255,255,0.72)', iconColor: '#163674' },
+  { isArrow: false, icon: MessageCircleMore, step: '단계 3', title: 'AI 그룹 토의', desc: '3명의 AI 에이전트\n3라운드', color: '#DDE8FC', textColor: '#163674', iconBg: 'rgba(255,255,255,0.72)', iconColor: '#163674' },
   { isArrow: true, step: '', title: '', desc: '', color: '', textColor: '', iconBg: '', iconColor: '' },
   { isArrow: false, icon: Trophy, step: '결과', title: '점수 + streak', desc: '3종 점수 확인\nstreak 갱신', color: '#D4E1FC', textColor: '#112B5C', iconBg: 'rgba(255,255,255,0.76)', iconColor: '#112B5C' },
 ]
 
 const features = [
   { icon: BookOpenText, title: 'AI 생성 지문', desc: '학생 수준에 딱 맞는 지문을 AI가 실시간으로 만들어요. 뉴스·동화·과학 등 다양한 장르를 경험해요.', bg: '#EBF0FC', color: '#1B438A' },
-  { icon: UserRoundPlus, title: '또래 AI 토의', desc: '모더레이터와 또래 AI 친구들과 함께 지문에 대해 토의해요. 자연스럽게 비판적 사고력이 길러져요.', bg: '#E8F0FD', color: '#1B438A' },
+  { icon: UserRoundPlus, title: '또래 AI 토의', desc: '3명의 AI 에이전트와 함께 지문에 대해 토의해요. 자연스럽게 비판적 사고력이 길러져요.', bg: '#E8F0FD', color: '#1B438A' },
   { icon: BarChart3, title: '수준별 맞춤 진단', desc: '추론력·어휘력·맥락파악 3가지 영역을 정밀 분석해요. 교사가 즉시 학급 현황을 파악할 수 있어요.', bg: '#DDE8FC', color: '#163674' },
   { icon: Flame, title: '연속 학습 streak', desc: '매일 꾸준히 학습하면 streak이 쌓여요. 게임처럼 재미있는 학습 습관 형성을 도와줘요.', bg: '#FFF1D6', color: '#B86A00' },
   { icon: Target, title: '취약 영역 포착', desc: '세션마다 학생의 약점을 정밀 추적해요. 교사가 확인이 필요한 학생을 빠르게 찾아낼 수 있어요.', bg: '#FFE6E1', color: '#C6533C' },
