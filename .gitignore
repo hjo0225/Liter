@@ -20,7 +20,7 @@ frontend/.vite/
 .vscode/
 .idea/
 .DS_Store
-
+claude.md
 .claude/*
 .vercel/*
 migrations/*
