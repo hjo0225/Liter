@@ -25,10 +25,11 @@
 4. [핵심 기능](#4-핵심-기능)
 5. [트러블슈팅](#5-트러블슈팅)
 6. [실행 방법](#6-실행-방법)
-7. [API 엔드포인트](#7-api-엔드포인트)
-8. [DB 스키마](#8-db-스키마)
-9. [CI/CD 및 유지보수](#9-cicd-및-유지보수)
-10. [라이선스](#10-라이선스)
+7. [유저 플로우 (테스트 가이드)](#7-유저-플로우-테스트-가이드)
+8. [API 엔드포인트](#8-api-엔드포인트)
+9. [DB 스키마](#9-db-스키마)
+10. [CI/CD](#10-cicd)
+11. [라이선스](#11-라이선스)
 
 ## 1. 개요
 
@@ -98,11 +99,11 @@ Step 3: 선생님 (정리)  — 실제 발언 요약 + 학생에게 질문
 
 **라운드별 주제:**
 
-| 라운드 | 주제        | 학생에게 요청          |
-| ------ | ----------- | ---------------------- |
-| 1      | 의견 나누기 | 자기 의견 말하기       |
-| 2      | 반박하기    | 다른 의견에 반박하기   |
-| 3      | 결론 내기   | 최종 결론 정리하기     |
+| 라운드 | 주제        | 학생에게 요청        |
+| ------ | ----------- | -------------------- |
+| 1      | 의견 나누기 | 자기 의견 말하기     |
+| 2      | 반박하기    | 다른 의견에 반박하기 |
+| 3      | 결론 내기   | 최종 결론 정리하기   |
 
 ### 에이전트 캐릭터
 
@@ -310,59 +311,64 @@ uvicorn app.main:app --reload    # http://localhost:8000
 # Frontend
 cd frontend
 npm install
-# .env.local 파일 생성
-# VITE_API_BASE_URL=http://localhost:8000
+# .env.local 파일에 VITE_API_BASE_URL=http://localhost:8000 설정
 npm run dev                       # http://localhost:5173
 ```
 
-### Docker (Backend)
+## 7. 유저 플로우 (테스트 가이드)
 
-```bash
-docker build -t tododok-backend ./backend
+배포 환경(`liter-psi.vercel.app`) 또는 로컬(`localhost:5173`)에서 아래 순서로 테스트합니다.
 
-docker run -p 8080:8080 \
-  -e SUPABASE_URL=<your-url> \
-  -e SUPABASE_SERVICE_ROLE_KEY=<key> \
-  -e OPENAI_API_KEY=<key> \
-  -e JWT_SECRET=<secret> \
-  tododok-backend
-```
+### 교사 플로우
 
-## 7. API 엔드포인트
+1. 랜딩 페이지에서 **교사** 역할 선택
+2. 이메일 입력 → 회원가입 → 수신된 OTP 6자리 입력하여 인증
+3. 로그인 후 **학급 생성** → 자동 발급된 **참여코드**(join_code) 확인
+4. 대시보드에서 학생별 레벨, 취약 영역, 세션 이력 조회
+5. 필요 시 학생 레벨 수동 조정 (자동 레벨 조정에 우선)
 
-### 인증
+### 학생 플로우
 
-| Method | Path                              | 설명                |
-| ------ | --------------------------------- | ------------------- |
-| `POST` | `/api/v1/auth/teacher/signup`     | 교사 회원가입       |
-| `POST` | `/api/v1/auth/teacher/verify-otp` | 교사 OTP 인증       |
-| `POST` | `/api/v1/auth/student/join`       | 학생 참여코드 → JWT |
+1. 랜딩 페이지에서 **학생** 역할 선택
+2. 교사에게 받은 **참여코드** + 이름 입력 → 자동 로그인
+3. 홈 화면에서 **오늘의 학습 시작** 클릭 (일일 3회 제한)
+4. **지문 읽기** — AI가 레벨에 맞춰 생성한 250~400자 지문을 읽음
+5. **퀴즈 풀기** — 정보 추출 / 추론 / 어휘 객관식 3문항에 답안 제출
+6. **AI 그룹 토의** — 선생님(사회자), 민지, 준서와 3라운드 토의 진행
+   - 라운드 1: AI들이 의견을 나눈 뒤 학생에게 질문 → 학생이 자기 의견 입력
+   - 라운드 2: AI들이 서로 반박한 뒤 학생에게 반박 요청 → 학생이 반박 입력
+   - 라운드 3: AI들이 결론을 말한 뒤 학생에게 최종 정리 요청 → 학생이 결론 입력
+7. **결과 확인** — 추론·어휘·맥락 파악 점수, 피드백, streak 확인
 
-### 학생
+### 테스트 체크리스트
 
-| Method | Path                                             | 설명             |
-| ------ | ------------------------------------------------ | ---------------- |
-| `GET`  | `/api/v1/student/me`                             | 학생 프로필 조회 |
-| `POST` | `/api/v1/student/sessions`                       | 세션 시작        |
-| `POST` | `/api/v1/student/sessions/{id}/answers`          | 퀴즈 답안 제출   |
-| `GET`  | `/api/v1/student/sessions/{id}/discussion`       | SSE 토의 스트림  |
-| `POST` | `/api/v1/student/sessions/{id}/discussion/turns` | 학생 발화 입력   |
+- [ ] 교사 가입 → 학급 생성 → 참여코드 발급까지 정상 동작
+- [ ] 학생이 참여코드로 입장 후 세션 시작 가능
+- [ ] 지문·퀴즈가 정상 생성되고, 답안 제출이 동작
+- [ ] 토의 SSE 스트림이 끊기지 않고 3라운드 완료
+- [ ] 각 라운드에서 학생 입력 후 다음 라운드로 전환
+- [ ] 세션 종료 후 점수·피드백이 표시
+- [ ] 일일 3회 세션 제한이 동작
+- [ ] 교사 대시보드에서 완료된 세션 데이터가 반영
 
-### 교사
+## 8. API 엔드포인트
 
-| Method | Path                              | 설명                  |
-| ------ | --------------------------------- | --------------------- |
-| `GET`  | `/api/v1/teacher/classrooms`      | 학급 목록 조회        |
-| `GET`  | `/api/v1/teacher/classrooms/{id}` | 학급 상세 + 학생 분석 |
+전체 API 스펙은 `{BACKEND_URL}/docs` (Swagger UI)에서 확인할 수 있습니다.
 
-### 내부 (Cron)
+| Method | Path                                             | 설명                  |
+| ------ | ------------------------------------------------ | --------------------- |
+| `POST` | `/api/v1/auth/teacher/signup`                    | 교사 회원가입         |
+| `POST` | `/api/v1/auth/teacher/verify-otp`                | 교사 OTP 인증         |
+| `POST` | `/api/v1/auth/student/join`                      | 학생 참여코드 → JWT   |
+| `GET`  | `/api/v1/student/me`                             | 학생 프로필 조회      |
+| `POST` | `/api/v1/student/sessions`                       | 세션 시작             |
+| `POST` | `/api/v1/student/sessions/{id}/answers`          | 퀴즈 답안 제출        |
+| `GET`  | `/api/v1/student/sessions/{id}/discussion`       | SSE 토의 스트림       |
+| `POST` | `/api/v1/student/sessions/{id}/discussion/turns` | 학생 발화 입력        |
+| `GET`  | `/api/v1/teacher/classrooms`                     | 학급 목록 조회        |
+| `GET`  | `/api/v1/teacher/classrooms/{id}`                | 학급 상세 + 학생 분석 |
 
-| Method | Path                                          | 설명             |
-| ------ | --------------------------------------------- | ---------------- |
-| `POST` | `/api/v1/internal/cleanup-abandoned-sessions` | 방치 세션 정리   |
-| `POST` | `/api/v1/internal/adjust-levels`              | 자동 레벨 재조정 |
-
-## 8. DB 스키마
+## 9. DB 스키마
 
 ```
 students       — id, name, level, streak_count, weak_areas[], classroom_id, is_manual_override
@@ -374,51 +380,13 @@ classrooms     — id, teacher_id, name, join_code
 teachers       — id, email, password_hash, classroom_id
 ```
 
-### 주요 상수
+## 10. CI/CD
 
-| 상수                        | 값    | 설명                   |
-| --------------------------- | ----- | ---------------------- |
-| `DAILY_SESSION_LIMIT`       | 3     | 일일 세션 제한         |
-| `MAX_DISCUSSION_TOPICS`     | 3     | 토의 라운드 수         |
-| `LEVEL_UP_THRESHOLD`        | 8.0   | 레벨업 기준 점수       |
-| `LEVEL_DOWN_THRESHOLD`      | 5.0   | 레벨다운 기준 점수     |
-| `MIN_LEVEL` / `MAX_LEVEL`   | 1 / 3 | 난이도 범위            |
-| `SESSION_TIMEOUT_MINUTES`   | 60    | 유휴 세션 만료 (분)    |
-| `SESSIONS_FOR_LEVEL_ADJUST` | 3     | 레벨 조정 기준 세션 수 |
+GitHub Actions로 `backend/**` 변경 시 GCP Cloud Run, `frontend/**` 변경 시 Vercel에 자동 배포됩니다.
 
-## 9. CI/CD 및 유지보수
+- 단위 테스트: `backend/tests/` (Pytest)
+- E2E 테스트: `frontend/e2e/` (Playwright)
 
-### CI/CD (GitHub Actions)
-
-| 워크플로우            | 트리거             | 동작                                                                   |
-| --------------------- | ------------------ | ---------------------------------------------------------------------- |
-| `deploy-backend.yml`  | `backend/**` 변경  | Docker 빌드 → GCP Artifact Registry → Cloud Run 배포 (asia-northeast3) |
-| `deploy-frontend.yml` | `frontend/**` 변경 | Vercel 프로덕션 배포                                                   |
-
-### 테스트
-
-| 종류        | 위치             | 설명                                         |
-| ----------- | ---------------- | -------------------------------------------- |
-| 단위 테스트 | `backend/tests/` | Pytest — 에이전트 시나리오 테스트            |
-| E2E 테스트  | `frontend/e2e/`  | Playwright — 학생 세션, 교사 대시보드 플로우 |
-
-### 기술 스택 상세
-
-**Backend:**
-
-- FastAPI 0.115 + uvicorn 0.30
-- Supabase SDK 2.10 (PostgreSQL + Auth)
-- OpenAI SDK 1.75 (`gpt-4o-mini`)
-- python-jose (JWT), httpx, pydantic-settings
-
-**Frontend:**
-
-- Vue 3.5 + TypeScript 6.0 + Vite 8.0
-- Pinia 3.0 (상태 관리)
-- TailwindCSS 4.2
-- Axios (HTTP), @vueuse/core, lucide-vue-next (아이콘)
-- Playwright (E2E 테스트)
-
-## 10. 라이선스
+## 11. 라이선스
 
 [MIT License](LICENSE.md) &copy; 2026 HJO
