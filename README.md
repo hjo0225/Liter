@@ -5,6 +5,7 @@
 > **한 줄 요약:** 정답 확인으로 끝나는 기존 문해력 학습의 한계를 넘어, 또래 AI 에이전트와의 독서 토의로 초등학생의 추론·어휘·맥락 파악 능력을 향상시키는 교육 플랫폼
 
 <div align="center">
+
 ![Vue](https://img.shields.io/badge/Frontend-Vue%203-42B883?style=for-the-badge&logo=vuedotjs&logoColor=white)
 ![Vite](https://img.shields.io/badge/Build-Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white)
@@ -80,31 +81,28 @@ graph TB
 3. AI 그룹 토의 (3라운드 고정)
 4. 세션 종료 → 점수 산출 + 레벨 조정 + 취약 영역 업데이트
 
-```
-
 ### 토의 구조 — 고정 턴 시퀀스
 
 Director LLM 없이 **고정 시퀀스**로 턴을 결정합니다. 라운드당 4턴, 총 3라운드:
 
 ```
-
 라운드당 턴 순서: ["moderator", "peer_a", "peer_b", "moderator"]
 
 Step 0: 선생님 (사회자) — 주제 소개 / 전환 / 결론 안내
-Step 1: 민지 (peer_a) — 의견 / 반박 / 결론
-Step 2: 준서 (peer_b) — 민지에 반응 + 자기 의견
-Step 3: 선생님 (정리) — 실제 발언 요약 + 학생에게 질문
+Step 1: 민지 (peer_a)  — 의견 / 반박 / 결론
+Step 2: 준서 (peer_b)  — 민지에 반응 + 자기 의견
+Step 3: 선생님 (정리)  — 실제 발언 요약 + 학생에게 질문
 → 학생 입력 대기 (wait_for_user)
 × 3라운드 → 마무리 + 점수 산출
-
 ```
 
 **라운드별 주제:**
-| 라운드 | 주제 | 학생에게 요청 |
-|--------|------|---------------|
-| 1 | 의견 나누기 | 자기 의견 말하기 |
-| 2 | 반박하기 | 다른 의견에 반박하기 |
-| 3 | 결론 내기 | 최종 결론 정리하기 |
+
+| 라운드 | 주제        | 학생에게 요청          |
+| ------ | ----------- | ---------------------- |
+| 1      | 의견 나누기 | 자기 의견 말하기       |
+| 2      | 반박하기    | 다른 의견에 반박하기   |
+| 3      | 결론 내기   | 최종 결론 정리하기     |
 
 ### 에이전트 캐릭터
 
@@ -114,126 +112,120 @@ Step 3: 선생님 (정리) — 실제 발언 요약 + 학생에게 질문
 | peer_a    | 민지            | 적극적, 의견 주장형       | `prompts/peer_a.md`    |
 | peer_b    | 준서            | 소극적, 질문형            | `prompts/peer_b.md`    |
 
-
-
 ## 3. 프로젝트 구조
 
 ```
-
 KIT 바이브코딩 공모전/
 ├── backend/
-│ ├── app/
-│ │ ├── agents/ # AI 에이전트 로직
-│ │ │ ├── discussion_agent.py # 토의 에이전트 (moderator, peer_a, peer_b)
-│ │ │ ├── passage_agent.py # 지문 생성 에이전트
-│ │ │ ├── diagnosis_agent.py # 취약 영역 진단 에이전트
-│ │ │ └── feedback_agent.py # 피드백 생성 에이전트
-│ │ ├── core/ # 공통 모듈
-│ │ │ ├── config.py # 환경변수·설정 관리
-│ │ │ ├── constants.py # 상수 정의 (레벨, 제한 등)
-│ │ │ ├── state.py # 세션 상태 관리
-│ │ │ ├── supabase.py # Supabase 클라이언트
-│ │ │ ├── llm_logging.py # LLM 호출 로깅
-│ │ │ ├── deps.py # FastAPI 의존성 주입
-│ │ │ └── dependencies.py # 추가 의존성
-│ │ ├── routers/ # API 라우터
-│ │ │ ├── student/ # 학생 엔드포인트
-│ │ │ │ ├── session.py # 세션 생성·조회
-│ │ │ │ ├── discussion.py # SSE 토의 스트림
-│ │ │ │ ├── turns.py # 학생 발화 입력
-│ │ │ │ └── scoring.py # 점수 산출
-│ │ │ ├── auth_student.py # 학생 인증 (참여코드)
-│ │ │ ├── auth_teacher.py # 교사 인증 (OTP)
-│ │ │ ├── teacher.py # 교사 대시보드 API
-│ │ │ └── internal.py # 내부 cron 엔드포인트
-│ │ ├── schemas/ # Pydantic 모델
-│ │ │ ├── auth.py # 인증 스키마
-│ │ │ ├── session.py # 세션 스키마
-│ │ │ ├── llm.py # LLM 관련 스키마
-│ │ │ └── classroom.py # 학급 스키마
-│ │ ├── services/ # 비즈니스 로직
-│ │ │ ├── discussion.py # 토의 오케스트레이션 (고정 시퀀스)
-│ │ │ └── director.py # (레거시, 미사용)
-│ │ └── main.py # FastAPI 앱 정의
-│ ├── prompts/ # 에이전트 시스템 프롬프트 (.md)
-│ │ ├── moderator.md
-│ │ ├── peer_a.md
-│ │ ├── peer_b.md
-│ │ └── director.md # (레거시)
-│ ├── migrations/ # SQL 마이그레이션
-│ │ ├── 001_p1_schema.sql
-│ │ ├── 002_p11_enhanced_logging.sql
-│ │ └── 003_add_timing_columns.sql
-│ ├── scripts/
-│ │ └── export_session.py # 세션 데이터 내보내기
-│ ├── tests/ # 백엔드 테스트 (Pytest)
-│ │ ├── test_director.py
-│ │ └── test_p12_scenarios.py
-│ ├── main.py # Cloud Run 진입점
-│ ├── Dockerfile
-│ └── requirements.txt
+│   ├── app/
+│   │   ├── agents/                # AI 에이전트 로직
+│   │   │   ├── discussion_agent.py  # 토의 에이전트 (moderator, peer_a, peer_b)
+│   │   │   ├── passage_agent.py     # 지문 생성 에이전트
+│   │   │   ├── diagnosis_agent.py   # 취약 영역 진단 에이전트
+│   │   │   └── feedback_agent.py    # 피드백 생성 에이전트
+│   │   ├── core/                  # 공통 모듈
+│   │   │   ├── config.py            # 환경변수·설정 관리
+│   │   │   ├── constants.py         # 상수 정의 (레벨, 제한 등)
+│   │   │   ├── state.py             # 세션 상태 관리
+│   │   │   ├── supabase.py          # Supabase 클라이언트
+│   │   │   ├── llm_logging.py       # LLM 호출 로깅
+│   │   │   ├── deps.py              # FastAPI 의존성 주입
+│   │   │   └── dependencies.py      # 추가 의존성
+│   │   ├── routers/               # API 라우터
+│   │   │   ├── student/             # 학생 엔드포인트
+│   │   │   │   ├── session.py         # 세션 생성·조회
+│   │   │   │   ├── discussion.py      # SSE 토의 스트림
+│   │   │   │   ├── turns.py           # 학생 발화 입력
+│   │   │   │   └── scoring.py         # 점수 산출
+│   │   │   ├── auth_student.py      # 학생 인증 (참여코드)
+│   │   │   ├── auth_teacher.py      # 교사 인증 (OTP)
+│   │   │   ├── teacher.py           # 교사 대시보드 API
+│   │   │   └── internal.py          # 내부 cron 엔드포인트
+│   │   ├── schemas/               # Pydantic 모델
+│   │   │   ├── auth.py              # 인증 스키마
+│   │   │   ├── session.py           # 세션 스키마
+│   │   │   ├── llm.py               # LLM 관련 스키마
+│   │   │   └── classroom.py         # 학급 스키마
+│   │   ├── services/              # 비즈니스 로직
+│   │   │   ├── discussion.py        # 토의 오케스트레이션 (고정 시퀀스)
+│   │   │   └── director.py          # (레거시, 미사용)
+│   │   └── main.py                # FastAPI 앱 정의
+│   ├── prompts/                   # 에이전트 시스템 프롬프트 (.md)
+│   │   ├── moderator.md
+│   │   ├── peer_a.md
+│   │   ├── peer_b.md
+│   │   └── director.md              # (레거시)
+│   ├── migrations/                # SQL 마이그레이션
+│   │   ├── 001_p1_schema.sql
+│   │   ├── 002_p11_enhanced_logging.sql
+│   │   └── 003_add_timing_columns.sql
+│   ├── scripts/
+│   │   └── export_session.py        # 세션 데이터 내보내기
+│   ├── tests/                     # 백엔드 테스트 (Pytest)
+│   │   ├── test_director.py
+│   │   └── test_p12_scenarios.py
+│   ├── main.py                    # Cloud Run 진입점
+│   ├── Dockerfile
+│   └── requirements.txt
 │
 ├── frontend/
-│ ├── src/
-│ │ ├── api/ # API 클라이언트
-│ │ │ ├── client.ts # Axios 인스턴스 + 인터셉터
-│ │ │ └── config.ts # API URL 설정
-│ │ ├── components/ # Vue 컴포넌트
-│ │ │ └── discussion/ # 토의 UI 컴포넌트
-│ │ │ ├── DiscussionHeader.vue
-│ │ │ ├── DiscussionMessageList.vue
-│ │ │ ├── DiscussionInput.vue
-│ │ │ └── types.ts
-│ │ ├── composables/ # Composition API 훅
-│ │ │ └── useDiscussionStream.ts # SSE 스트림 처리
-│ │ ├── pages/ # 라우트 페이지
-│ │ │ ├── LandingPage.vue # 랜딩 (역할 선택)
-│ │ │ ├── StudentOnboarding.vue # 학생 참여코드 입력
-│ │ │ ├── StudentHome.vue # 학생 홈 (세션 시작)
-│ │ │ ├── StudentSession.vue # 지문 읽기 + 퀴즈
-│ │ │ ├── StudentDiscussion.vue # AI 그룹 토의
-│ │ │ ├── StudentResult.vue # 결과 확인
-│ │ │ ├── TeacherDashboardPage.vue
-│ │ │ └── teacher/
-│ │ │ ├── TeacherAuthPage.vue # 교사 로그인/가입
-│ │ │ └── TeacherClassroomsPage.vue # 학급 목록
-│ │ ├── router/
-│ │ │ └── index.ts # Vue Router 설정
-│ │ ├── stores/ # Pinia 상태 관리
-│ │ │ ├── student.ts # 학생 인증·프로필
-│ │ │ ├── teacher.ts # 교사 인증·프로필
-│ │ │ ├── session.ts # 세션 상태
-│ │ │ └── discussion.ts # 토의 메시지·상태
-│ │ ├── lib/ # 유틸리티
-│ │ ├── assets/ # 정적 자산
-│ │ ├── App.vue
-│ │ └── main.ts
-│ ├── e2e/ # Playwright E2E 테스트
-│ │ ├── student.flow.spec.ts # 학생 세션 플로우
-│ │ ├── teacher.flow.spec.ts # 교사 대시보드 플로우
-│ │ ├── fixtures/
-│ │ └── helpers/
-│ ├── public/
-│ ├── index.html
-│ ├── package.json
-│ ├── vite.config.ts
-│ ├── vercel.json
-│ ├── playwright.config.ts
-│ └── tsconfig.json
+│   ├── src/
+│   │   ├── api/                   # API 클라이언트
+│   │   │   ├── client.ts            # Axios 인스턴스 + 인터셉터
+│   │   │   └── config.ts            # API URL 설정
+│   │   ├── components/            # Vue 컴포넌트
+│   │   │   └── discussion/          # 토의 UI 컴포넌트
+│   │   │       ├── DiscussionHeader.vue
+│   │   │       ├── DiscussionMessageList.vue
+│   │   │       ├── DiscussionInput.vue
+│   │   │       └── types.ts
+│   │   ├── composables/           # Composition API 훅
+│   │   │   └── useDiscussionStream.ts # SSE 스트림 처리
+│   │   ├── pages/                 # 라우트 페이지
+│   │   │   ├── LandingPage.vue      # 랜딩 (역할 선택)
+│   │   │   ├── StudentOnboarding.vue  # 학생 참여코드 입력
+│   │   │   ├── StudentHome.vue      # 학생 홈 (세션 시작)
+│   │   │   ├── StudentSession.vue   # 지문 읽기 + 퀴즈
+│   │   │   ├── StudentDiscussion.vue  # AI 그룹 토의
+│   │   │   ├── StudentResult.vue    # 결과 확인
+│   │   │   ├── TeacherDashboardPage.vue
+│   │   │   └── teacher/
+│   │   │       ├── TeacherAuthPage.vue      # 교사 로그인/가입
+│   │   │       └── TeacherClassroomsPage.vue  # 학급 목록
+│   │   ├── router/
+│   │   │   └── index.ts             # Vue Router 설정
+│   │   ├── stores/                # Pinia 상태 관리
+│   │   │   ├── student.ts           # 학생 인증·프로필
+│   │   │   ├── teacher.ts           # 교사 인증·프로필
+│   │   │   ├── session.ts           # 세션 상태
+│   │   │   └── discussion.ts        # 토의 메시지·상태
+│   │   ├── lib/                   # 유틸리티
+│   │   ├── assets/                # 정적 자산
+│   │   ├── App.vue
+│   │   └── main.ts
+│   ├── e2e/                       # Playwright E2E 테스트
+│   │   ├── student.flow.spec.ts     # 학생 세션 플로우
+│   │   ├── teacher.flow.spec.ts     # 교사 대시보드 플로우
+│   │   ├── fixtures/
+│   │   └── helpers/
+│   ├── public/
+│   ├── index.html
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── vercel.json
+│   ├── playwright.config.ts
+│   └── tsconfig.json
 │
 ├── docs/
-│ └── sse_protocol.md # SSE 프로토콜 문서
+│   └── sse_protocol.md              # SSE 프로토콜 문서
 ├── .github/
-│ └── workflows/
-│ ├── deploy-backend.yml # Backend CI/CD
-│ └── deploy-frontend.yml # Frontend CI/CD
+│   └── workflows/
+│       ├── deploy-backend.yml       # Backend CI/CD
+│       └── deploy-frontend.yml      # Frontend CI/CD
 ├── CLAUDE.md
-├── LICENSE.md # MIT License
+├── LICENSE.md                       # MIT License
 └── README.md
-
-````
-
-
+```
 
 ## 4. 핵심 기능
 
@@ -259,7 +251,6 @@ KIT 바이브코딩 공모전/
 ### 4.4 교사 대시보드
 
 학급 단위로 학생별 레벨, 취약 영역, 세션 이력을 모니터링하고 난이도를 수동 조정할 수 있습니다.
-
 
 ## 5. 트러블슈팅
 
@@ -293,8 +284,6 @@ KIT 바이브코딩 공모전/
 - **문제:** 턴 순서가 고정인데 LLM으로 결정 → 불필요한 비용 + guard가 어차피 덮어씀
 - **해결:** Director LLM 제거, `_next_decision()` 함수에서 `ROUND_SPEAKERS` 배열 인덱싱으로 대체
 
-
-
 ## 6. 실행 방법
 
 ### 필수 환경 변수
@@ -312,33 +301,31 @@ KIT 바이브코딩 공모전/
 ### Local 개발
 
 ```bash
-# ── Backend ──────────────────────────────────────────
+# Backend
 cd backend
 pip install -r requirements.txt
-
 # .env 파일 생성 후 위 환경 변수 설정
 uvicorn app.main:app --reload    # http://localhost:8000
 
-# ── Frontend ─────────────────────────────────────────
+# Frontend
 cd frontend
 npm install
-
 # .env.local 파일 생성
 # VITE_API_BASE_URL=http://localhost:8000
 npm run dev                       # http://localhost:5173
-````
+```
 
 ### Docker (Backend)
 
 ```bash
-docker build -t liter-backend ./backend
+docker build -t tododok-backend ./backend
 
 docker run -p 8080:8080 \
   -e SUPABASE_URL=<your-url> \
   -e SUPABASE_SERVICE_ROLE_KEY=<key> \
   -e OPENAI_API_KEY=<key> \
   -e JWT_SECRET=<secret> \
-  liter-backend
+  tododok-backend
 ```
 
 ## 7. API 엔드포인트
@@ -374,8 +361,6 @@ docker run -p 8080:8080 \
 | ------ | --------------------------------------------- | ---------------- |
 | `POST` | `/api/v1/internal/cleanup-abandoned-sessions` | 방치 세션 정리   |
 | `POST` | `/api/v1/internal/adjust-levels`              | 자동 레벨 재조정 |
-
----
 
 ## 8. DB 스키마
 
